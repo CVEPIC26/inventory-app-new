@@ -27,43 +27,74 @@ export default async function handler(req, res) {
 async function handleGet(req, res) {
   const { include_inactive } = req.query;
   
-  let query = `
-    SELECT 
-      om.id,
-      om.outlet_id,
-      o.nama_outlet,
-      om.is_active,
-      om.created_at,
-      om.updated_at
-    FROM outlet_master om
-    JOIN outlet o ON o.id = om.outlet_id
-  `;
-  
-  if (include_inactive !== 'true') {
-    query += ` WHERE om.is_active = TRUE`;
-  }
-  
-  query += ` ORDER BY o.nama_outlet ASC`;
-  
-  const result = await pool.query(query);
-  
-  // Get all outlets for dropdown (outlets not in outlet_master yet)
-  const allOutlets = await pool.query(`
-    SELECT o.id, o.nama_outlet
-    FROM outlet o
-    WHERE o.id NOT IN (SELECT outlet_id FROM outlet_master)
-    ORDER BY o.nama_outlet ASC
-  `);
-  
-  return res.status(200).json({
-    success: true,
-    data: {
-      outlets: result.rows,
-      available_outlets: allOutlets.rows, // Outlets not yet in outlet_master
-      total_active: result.rows.filter(r => r.is_active).length,
-      total_inactive: include_inactive === 'true' ? result.rows.filter(r => !r.is_active).length : 0
+  try {
+    // Check if outlet_master table exists
+    const tableCheck = await pool.query(`
+      SELECT to_regclass('public.outlet_master') IS NOT NULL AS exists
+    `);
+    
+    if (!tableCheck.rows[0]?.exists) {
+      // Table doesn't exist yet - return empty state
+      const allOutlets = await pool.query(`
+        SELECT o.id, o.nama_outlet
+        FROM outlet o
+        ORDER BY o.nama_outlet ASC
+      `);
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          outlets: [],
+          available_outlets: allOutlets.rows,
+          total_active: 0,
+          total_inactive: 0,
+          message: 'outlet_master table not initialized. Run migration first.'
+        }
+      });
     }
-  });
+    
+    let query = `
+      SELECT 
+        om.id,
+        om.outlet_id,
+        o.nama_outlet,
+        om.is_active,
+        om.created_at,
+        om.updated_at
+      FROM outlet_master om
+      JOIN outlet o ON o.id = om.outlet_id
+    `;
+    
+    if (include_inactive !== 'true') {
+      query += ` WHERE om.is_active = TRUE`;
+    }
+    
+    query += ` ORDER BY o.nama_outlet ASC`;
+    
+    const result = await pool.query(query);
+    
+    // Get all outlets for dropdown (outlets not in outlet_master yet)
+    const allOutlets = await pool.query(`
+      SELECT o.id, o.nama_outlet
+      FROM outlet o
+      WHERE o.id NOT IN (SELECT outlet_id FROM outlet_master)
+      ORDER BY o.nama_outlet ASC
+    `);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        outlets: result.rows,
+        available_outlets: allOutlets.rows,
+        total_active: result.rows.filter(r => r.is_active).length,
+        total_inactive: include_inactive === 'true' ? result.rows.filter(r => !r.is_active).length : 0
+      }
+    });
+    
+  } catch (error) {
+    console.error('Outlet Master GET error:', error);
+    return res.status(500).json({ success: false, message: 'Database error: ' + error.message });
+  }
 }
 
 // POST /api/v1/outlet-master - Add outlet(s) to master
