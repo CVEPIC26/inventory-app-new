@@ -76,7 +76,7 @@ async function getAllProduk(req, res) {
   );
   const total = parseInt(countResult.rows[0].count);
   
-  // Get produk with calculated stok (simplified query)
+  // Get produk with simple query (no stock calculation to avoid timeout)
   const query = `
     SELECT 
       p.sku as id,
@@ -87,25 +87,7 @@ async function getAllProduk(req, res) {
       p.harga_beli,
       p.harga_jual,
       p.created_at,
-      COALESCE((
-        SELECT COALESCE(sa.qty_awal, 0)
-        FROM stok_awal sa
-        WHERE sa.sku = p.sku
-        ORDER BY sa.created_at DESC
-        LIMIT 1
-      ), 0) + COALESCE((
-        SELECT COALESCE(SUM(pb.qty), 0)
-        FROM pembelian pb
-        WHERE pb.sku = p.sku
-      ), 0) - COALESCE((
-        SELECT COALESCE(SUM(pj.qty), 0)
-        FROM penjualan pj
-        WHERE pj.sku = p.sku
-      ), 0) + COALESCE((
-        SELECT COALESCE(SUM(sp.qty), 0)
-        FROM stok_penyesuaian sp
-        WHERE sp.sku = p.sku
-      ), 0) as stok
+      0 as stok
     FROM produk p
     ${whereClause}
     ORDER BY p.nama_produk ASC
@@ -139,25 +121,7 @@ async function getProdukBySku(req, res, sku) {
       p.harga_beli,
       p.harga_jual,
       p.created_at,
-      COALESCE((
-        SELECT COALESCE(sa.qty_awal, 0)
-        FROM stok_awal sa
-        WHERE sa.sku = p.sku
-        ORDER BY sa.created_at DESC
-        LIMIT 1
-      ), 0) + COALESCE((
-        SELECT COALESCE(SUM(pb.qty), 0)
-        FROM pembelian pb
-        WHERE pb.sku = p.sku
-      ), 0) - COALESCE((
-        SELECT COALESCE(SUM(pj.qty), 0)
-        FROM penjualan pj
-        WHERE pj.sku = p.sku
-      ), 0) + COALESCE((
-        SELECT COALESCE(SUM(sp.qty), 0)
-        FROM stok_penyesuaian sp
-        WHERE sp.sku = p.sku
-      ), 0) as stok
+      0 as stok
     FROM produk p
     WHERE p.sku = $1
   `;
