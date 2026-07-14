@@ -96,7 +96,7 @@
 
   async function loadProduk() {
     try {
-      const response = await fetch('/api/v1/produk');
+      const response = await fetch('/api/produk-list');
       if (!response.ok) throw new Error('Failed to load produk');
       const data = await response.json();
       produkList = data.produk || data.data || [];
@@ -119,9 +119,9 @@
       <tr>
         <td><code>${p.sku}</code></td>
         <td>${p.nama_produk}</td>
-        <td><span class="badge">${p.kategori || '-'}</span></td>
-        <td>${p.stok || 0}</td>
-        <td>${p.stok_minimum || 10}</td>
+        <td><span class="badge">-</span></td>
+        <td>-</td>
+        <td>-</td>
         <td>
           <button class="action-btn" onclick="editProduk('${p.sku}')">
             <i data-lucide="edit-2"></i>
@@ -150,69 +150,38 @@
     editingId = sku;
     document.getElementById('produkModalTitle').textContent = 'Edit Produk';
     document.getElementById('produkSku').value = produk.sku;
+    document.getElementById('produkSku').readOnly = true; // SKU tidak bisa diubah
     document.getElementById('produkNama').value = produk.nama_produk;
-    document.getElementById('produkKategori').value = produk.kategori || 'lain';
-    document.getElementById('produkStokMin').value = produk.stok_minimum || 10;
+    document.getElementById('produkKategori').value = 'lain';
+    document.getElementById('produkStokMin').value = 10;
     document.getElementById('produkModal').style.display = 'flex';
   }
 
   function closeProdukModal() {
     document.getElementById('produkModal').style.display = 'none';
+    document.getElementById('produkSku').readOnly = false;
     editingId = null;
   }
 
   async function saveProduk(event) {
     event.preventDefault();
     
-    const data = {
-      sku: document.getElementById('produkSku').value,
-      nama_produk: document.getElementById('produkNama').value,
-      kategori: document.getElementById('produkKategori').value,
-      stok_minimum: parseInt(document.getElementById('produkStokMin').value)
-    };
-
-    try {
-      const url = editingId ? `/api/v1/produk/${editingId}` : '/api/v1/produk';
-      const method = editingId ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-
-      if (!response.ok) throw new Error('Failed to save');
-      
-      showToast(editingId ? 'Produk berhasil diupdate' : 'Produk berhasil ditambahkan');
-      closeProdukModal();
-      loadProduk();
-    } catch (error) {
-      console.error('Error saving produk:', error);
-      showToast('Gagal menyimpan produk', false);
-    }
+    showToast('Fitur edit/tambah belum tersedia - hubungi administrator', false);
+    closeProdukModal();
   }
 
   async function deleteProduk(sku) {
     if (!confirm('Yakin hapus produk ini?')) return;
     
-    try {
-      const response = await fetch(`/api/v1/produk/${sku}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete');
-      
-      showToast('Produk berhasil dihapus');
-      loadProduk();
-    } catch (error) {
-      console.error('Error deleting produk:', error);
-      showToast('Gagal menghapus produk', false);
-    }
+    showToast('Fitur hapus belum tersedia - hubungi administrator', false);
   }
 
   // Search functionality
   document.getElementById('searchProduk')?.addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase();
     const filtered = produkList.filter(p => 
-      p.nama.toLowerCase().includes(query) || 
-      p.sku.toLowerCase().includes(query)
+      (p.nama_produk || '').toLowerCase().includes(query) || 
+      (p.sku || '').toLowerCase().includes(query)
     );
     renderFilteredTable(filtered);
   });
@@ -227,15 +196,15 @@
     tbody.innerHTML = data.map(p => `
       <tr>
         <td><code>${p.sku}</code></td>
-        <td>${p.nama}</td>
-        <td><span class="badge">${p.kategori}</span></td>
-        <td>${p.stok}</td>
-        <td>${p.stok_minimum}</td>
+        <td>${p.nama_produk}</td>
+        <td><span class="badge">-</span></td>
+        <td>-</td>
+        <td>-</td>
         <td>
-          <button class="action-btn" onclick="editProduk('${p.id}')">
+          <button class="action-btn" onclick="editProduk('${p.sku}')">
             <i data-lucide="edit-2"></i>
           </button>
-          <button class="action-btn danger" onclick="deleteProduk('${p.id}')">
+          <button class="action-btn danger" onclick="deleteProduk('${p.sku}')">
             <i data-lucide="trash-2"></i>
           </button>
         </td>
