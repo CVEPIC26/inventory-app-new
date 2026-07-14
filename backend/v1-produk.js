@@ -1,9 +1,14 @@
-import pool from "../services/db.js";
-
 export default async function handler(req, res) {
+  // Lazy import to avoid cold start issues
+  const { default: pool } = await import("../services/db.js");
+  
+  console.log('v1-produk handler called');
+  
   const method = req.method;
   const url = new URL(req.url, "http://localhost");
   const pathParts = url.pathname.split('/').filter(Boolean);
+  
+  console.log('Method:', method, 'Path:', url.pathname);
   
   // Extract ID from path (last part) - SKU is used as identifier
   const skuFromPath = pathParts[pathParts.length - 1];
@@ -13,20 +18,20 @@ export default async function handler(req, res) {
       case 'GET': {
         // GET /v1/produk or GET /v1/produk/:sku
         if (skuFromPath && skuFromPath !== 'produk') {
-          return getProdukBySku(req, res, skuFromPath);
+          return getProdukBySku(req, res, skuFromPath, pool);
         }
-        return getAllProduk(req, res);
+        return getAllProduk(req, res, pool);
       }
       
       case 'POST': {
         // POST /v1/produk - Create new produk
-        return createProduk(req, res);
+        return createProduk(req, res, pool);
       }
       
       case 'PUT': {
         // PUT /v1/produk/:sku - Update produk
         if (skuFromPath && skuFromPath !== 'produk') {
-          return updateProduk(req, res, skuFromPath);
+          return updateProduk(req, res, skuFromPath, pool);
         }
         return res.status(400).json({ error: 'SKU is required for update' });
       }
@@ -34,7 +39,7 @@ export default async function handler(req, res) {
       case 'DELETE': {
         // DELETE /v1/produk/:sku - Delete produk
         if (skuFromPath && skuFromPath !== 'produk') {
-          return deleteProduk(req, res, skuFromPath);
+          return deleteProduk(req, res, skuFromPath, pool);
         }
         return res.status(400).json({ error: 'SKU is required for delete' });
       }
@@ -48,12 +53,7 @@ export default async function handler(req, res) {
   }
 }
 
-// Debug: Simple test endpoint
-async function testHandler(req, res) {
-  return res.status(200).json({ message: 'Test OK' });
-}
-
-async function getAllProduk(req, res) {
+async function getAllProduk(req, res, pool) {
   const { search, kategori, page = 1, limit = 50 } = req.query || {};
   const offset = (parseInt(page) - 1) * parseInt(limit);
   
@@ -115,7 +115,7 @@ async function getAllProduk(req, res) {
   });
 }
 
-async function getProdukBySku(req, res, sku) {
+async function getProdukBySku(req, res, sku, pool) {
   const query = `
     SELECT 
       p.sku as id,
@@ -140,7 +140,7 @@ async function getProdukBySku(req, res, sku) {
   return res.status(200).json(result.rows[0]);
 }
 
-async function createProduk(req, res) {
+async function createProduk(req, res, pool) {
   const { sku, nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
   if (!sku || !nama_produk) {
@@ -176,7 +176,7 @@ async function createProduk(req, res) {
   });
 }
 
-async function updateProduk(req, res, sku) {
+async function updateProduk(req, res, sku, pool) {
   const { nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
   // Check if produk exists
@@ -240,7 +240,7 @@ async function updateProduk(req, res, sku) {
   });
 }
 
-async function deleteProduk(req, res, sku) {
+async function deleteProduk(req, res, sku, pool) {
   // Check if produk exists
   const existing = await pool.query('SELECT sku FROM produk WHERE sku = $1', [sku]);
   if (existing.rows.length === 0) {
