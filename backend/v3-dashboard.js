@@ -14,8 +14,10 @@ export default async function handler(req, res) {
     const filterTahun = parseInt(url.searchParams.get('tahun')) || currentYear;
 
     // Helper to build date range for period
+    // Note: JavaScript month is 0-indexed, so filterBulan-1 for start
+    // new Date(year, month, 0) gives last day of previous month = last day of target month
     const startOfMonth = new Date(filterTahun, filterBulan - 1, 1);
-    const endOfMonth = new Date(filterTahun, filterBulan, 0);
+    const endOfMonth = new Date(filterTahun, filterBulan, 0); // Last day of current month
 
     // 1. Distribusi Periode - Total Qty keluar dari penjualan
     const distribusiPeriode = await pool.query(`
