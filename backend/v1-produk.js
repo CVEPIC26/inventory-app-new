@@ -1,14 +1,9 @@
+import pool from "../services/db.js";
+
 export default async function handler(req, res) {
-  // Lazy import to avoid cold start issues
-  const { default: pool } = await import("../services/db.js");
-  
-  console.log('v1-produk handler called');
-  
   const method = req.method;
   const url = new URL(req.url, "http://localhost");
   const pathParts = url.pathname.split('/').filter(Boolean);
-  
-  console.log('Method:', method, 'Path:', url.pathname);
   
   // Extract ID from path (last part) - SKU is used as identifier
   const skuFromPath = pathParts[pathParts.length - 1];
@@ -18,20 +13,20 @@ export default async function handler(req, res) {
       case 'GET': {
         // GET /v1/produk or GET /v1/produk/:sku
         if (skuFromPath && skuFromPath !== 'produk') {
-          return getProdukBySku(req, res, skuFromPath, pool);
+          return getProdukBySku(req, res, skuFromPath);
         }
-        return getAllProduk(req, res, pool);
+        return getAllProduk(req, res);
       }
       
       case 'POST': {
         // POST /v1/produk - Create new produk
-        return createProduk(req, res, pool);
+        return createProduk(req, res);
       }
       
       case 'PUT': {
         // PUT /v1/produk/:sku - Update produk
         if (skuFromPath && skuFromPath !== 'produk') {
-          return updateProduk(req, res, skuFromPath, pool);
+          return updateProduk(req, res, skuFromPath);
         }
         return res.status(400).json({ error: 'SKU is required for update' });
       }
@@ -39,7 +34,7 @@ export default async function handler(req, res) {
       case 'DELETE': {
         // DELETE /v1/produk/:sku - Delete produk
         if (skuFromPath && skuFromPath !== 'produk') {
-          return deleteProduk(req, res, skuFromPath, pool);
+          return deleteProduk(req, res, skuFromPath);
         }
         return res.status(400).json({ error: 'SKU is required for delete' });
       }
@@ -53,7 +48,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function getAllProduk(req, res, pool) {
+async function getAllProduk(req, res) {
   const { search, kategori, page = 1, limit = 50 } = req.query || {};
   const offset = (parseInt(page) - 1) * parseInt(limit);
   
@@ -115,7 +110,7 @@ async function getAllProduk(req, res, pool) {
   });
 }
 
-async function getProdukBySku(req, res, sku, pool) {
+async function getProdukBySku(req, res, sku) {
   const query = `
     SELECT 
       p.sku as id,
@@ -140,7 +135,7 @@ async function getProdukBySku(req, res, sku, pool) {
   return res.status(200).json(result.rows[0]);
 }
 
-async function createProduk(req, res, pool) {
+async function createProduk(req, res) {
   const { sku, nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
   if (!sku || !nama_produk) {
@@ -176,7 +171,7 @@ async function createProduk(req, res, pool) {
   });
 }
 
-async function updateProduk(req, res, sku, pool) {
+async function updateProduk(req, res, sku) {
   const { nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
   // Check if produk exists
@@ -240,7 +235,7 @@ async function updateProduk(req, res, sku, pool) {
   });
 }
 
-async function deleteProduk(req, res, sku, pool) {
+async function deleteProduk(req, res, sku) {
   // Check if produk exists
   const existing = await pool.query('SELECT sku FROM produk WHERE sku = $1', [sku]);
   if (existing.rows.length === 0) {
