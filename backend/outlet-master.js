@@ -53,14 +53,27 @@ async function handleGet(req, res) {
       });
     }
     
+    // Check what columns exist in outlet_master
+    let hasUpdatedAt = false;
+    try {
+      const colCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'outlet_master' AND column_name = 'updated_at'
+      `);
+      hasUpdatedAt = colCheck.rows.length > 0;
+    } catch (e) {
+      // ignore
+    }
+    
     let query = `
       SELECT 
         om.id,
         om.outlet_id,
         o.nama_outlet,
         om.is_active,
-        om.created_at,
-        om.updated_at
+        om.created_at
+        ${hasUpdatedAt ? ', om.updated_at' : ', om.created_at as updated_at'}
       FROM outlet_master om
       JOIN outlet o ON o.id = om.outlet_id
     `;
