@@ -5,7 +5,6 @@
     <p class="page-subtitle">Kelola pengguna sistem</p>
   </div>
 
-  <!-- Actions -->
   <div class="page-actions">
     <button class="btn btn--primary" onclick="showAddUserModal()">
       <i data-lucide="plus"></i>
@@ -13,7 +12,6 @@
     </button>
   </div>
 
-  <!-- Filter -->
   <div class="filter-bar">
     <div class="filter-group">
       <label>Role</label>
@@ -34,7 +32,6 @@
     </div>
   </div>
 
-  <!-- Users Table -->
   <div class="card">
     <table class="data-table" id="usersTable">
       <thead>
@@ -56,40 +53,39 @@
   </div>
 </section>
 
-<!-- Add/Edit User Modal -->
-<div id="userModal" class="modal-overlay">
+<div id="userModal" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="modal__header">
       <h3 class="modal__title" id="userModalTitle">Tambah User</h3>
-      <button class="modal__close" onclick="closeUserModal()">
+      <button class="modal__close" onclick="closeUserModal()" aria-label="Tutup">
         <i data-lucide="x"></i>
       </button>
     </div>
     <form id="userForm" onsubmit="saveUser(event)">
       <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="userUsername" class="form-input" required>
+        <label for="userUsername">Username</label>
+        <input type="text" id="userUsername" class="form-input" required minlength="3">
       </div>
       <div class="form-group">
-        <label>Email</label>
+        <label for="userEmail">Email</label>
         <input type="email" id="userEmail" class="form-input" required>
       </div>
       <div class="form-group">
-        <label>Nama Lengkap</label>
-        <input type="text" id="userNama" class="form-input" required>
+        <label for="userNama">Nama Lengkap</label>
+        <input type="text" id="userNama" class="form-input" required minlength="2" maxlength="200">
       </div>
       <div class="form-group">
-        <label>Role</label>
+        <label for="userRole">Role</label>
         <select id="userRole" class="form-input" required>
           <option value="">-- Pilih Role --</option>
-          <option value="admin">Admin</option>
           <option value="staff_gudang">Staff Gudang</option>
           <option value="checker_opname">Checker</option>
+          <option value="admin">Admin</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Password <span id="passwordHint">(kosongkan jika tidak diubah)</span></label>
-        <input type="password" id="userPassword" class="form-input">
+        <label for="userPassword">Password <span id="passwordHint">(minimal 8 karakter)</span></label>
+        <input type="password" id="userPassword" class="form-input" minlength="8">
       </div>
       <div class="form-group">
         <label class="checkbox-label">
@@ -99,272 +95,145 @@
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn--secondary" onclick="closeUserModal()">Batal</button>
-        <button type="submit" class="btn btn--primary">Simpan</button>
+        <button type="submit" class="btn btn--primary" id="saveUserBtn">Simpan</button>
       </div>
     </form>
   </div>
 </div>
 
 <style>
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-  
-  .checkbox-label input {
-    width: 18px;
-    height: 18px;
-  }
-  
-  #passwordHint {
-    font-size: 11px;
-    color: #94A3B8;
-    font-weight: normal;
-  }
+  .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .checkbox-label input { width: 18px; height: 18px; }
+  #passwordHint { font-size: 11px; color: #94A3B8; font-weight: normal; }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn--loading { position: relative; color: transparent !important; }
+  .btn--loading::after { content: ""; position: absolute; width: 16px; height: 16px; top: 50%; left: 50%; margin-left: -8px; margin-top: -8px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
 <script>
-// User Management - Using window namespace to avoid closure issues
 (function() {
-  // State stored in window to be accessible by all functions
-  window.UserState = window.UserState || {
-    userList: [],
-    editingUserId: null
-  };
+  window.UserState = window.UserState || { userList: [], editingUserId: null, isLoading: false, requestId: 0 };
 
-  // Load users from server
+  function escapeHtml(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   async function loadUsers() {
+    if (window.UserState.isLoading) return;
+    window.UserState.isLoading = true;
+    var tbody = document.getElementById('usersTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Memuat data...</td></tr>';
+    
     try {
-      const role = document.getElementById('filterRole')?.value || '';
-      const isActive = document.getElementById('filterStatus')?.value || '';
+      var role = document.getElementById('filterRole')?.value || '';
+      var isActive = document.getElementById('filterStatus')?.value || '';
+      var url = '/api/v1/users?';
+      if (role) url += 'role=' + encodeURIComponent(role) + '&';
+      if (isActive) url += 'is_active=' + encodeURIComponent(isActive);
       
-      let url = '/api/v1/users?';
-      if (role) url += `role=${role}&`;
-      if (isActive) url += `is_active=${isActive}`;
+      var currentRequestId = ++window.UserState.requestId;
+      var response = await fetch(url);
+      if (currentRequestId !== window.UserState.requestId) return;
       
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to load');
-      const payload = await response.json();
+      if (!response.ok) {
+        if (response.status === 401) { showToast('Sesi berakhir. Silakan login ulang.', false); return; }
+        throw new Error('Failed to load');
+      }
       
-      window.UserState.userList = payload.items || payload.data || [];
+      var payload = await response.json();
+      window.UserState.userList = payload.data || [];
       renderUsersTable();
     } catch (error) {
       console.error('Error loading users:', error);
-      const tbody = document.getElementById('usersTableBody');
       if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Gagal memuat data</td></tr>';
+    } finally {
+      window.UserState.isLoading = false;
     }
   }
 
-  // Render table
   function renderUsersTable() {
-    const tbody = document.getElementById('usersTableBody');
+    var tbody = document.getElementById('usersTableBody');
     if (!tbody) return;
+    var users = window.UserState.userList;
+    if (users.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Tidak ada user ditemukan</td></tr>'; return; }
     
-    const users = window.UserState.userList;
-    if (users.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Tidak ada user</td></tr>';
-      return;
-    }
-    
-    tbody.innerHTML = users.map(user => {
-      const roleClass = user.role === 'admin' ? 'role-admin' : user.role === 'staff_gudang' ? 'role-staff_gudang' : 'role-checker_opname';
-      const isActive = user.status === 'active' || user.is_active;
-      
-      return `
-        <tr>
-          <td>${user.nama || user.name || '-'}</td>
-          <td><code>${user.username}</code></td>
-          <td>${user.email || '-'}</td>
-          <td><span class="role-badge ${roleClass}">${formatRole(user.role)}</span></td>
-          <td><span class="status-badge ${isActive ? 'status-active' : 'status-inactive'}">${isActive ? 'Aktif' : 'Nonaktif'}</span></td>
-          <td>
-            <button class="action-btn" onclick="UserMgmt.showEdit('${user.id}')">
-              <i data-lucide="edit-2"></i>
-            </button>
-            <button class="action-btn" onclick="UserMgmt.toggleStatus('${user.id}', ${!isActive})" title="${isActive ? 'Nonaktifkan' : 'Aktifkan'}">
-              <i data-lucide="${isActive ? 'user-minus' : 'user-plus'}"></i>
-            </button>
-            <button class="action-btn" onclick="UserMgmt.resetPassword('${user.id}')" title="Reset Password">
-              <i data-lucide="key"></i>
-            </button>
-            <button class="action-btn danger" onclick="UserMgmt.deleteUser('${user.id}')">
-              <i data-lucide="trash-2"></i>
-            </button>
-          </td>
-        </tr>
-      `;
+    tbody.innerHTML = users.map(function(user) {
+      var roleClass = user.role === 'admin' ? 'role-admin' : user.role === 'staff_gudang' ? 'role-staff_gudang' : 'role-checker_opname';
+      var isActive = user.status === 'active' || user.is_active;
+      return '<tr><td>' + escapeHtml(user.nama || user.name || '-') + '</td><td><code>' + escapeHtml(user.username) + '</code></td><td>' + escapeHtml(user.email || '-') + '</td><td><span class="role-badge ' + roleClass + '">' + formatRole(user.role) + '</span></td><td><span class="status-badge ' + (isActive ? 'status-active' : 'status-inactive') + '">' + (isActive ? 'Aktif' : 'Nonaktif') + '</span></td><td><button class="action-btn" onclick="UserMgmt.showEdit(\'' + user.id + '\')" title="Edit"><i data-lucide="edit-2"></i></button><button class="action-btn" onclick="UserMgmt.toggleStatus(\'' + user.id + '\', ' + !isActive + ')" title="' + (isActive ? 'Nonaktifkan' : 'Aktifkan') + '"><i data-lucide="' + (isActive ? 'user-minus' : 'user-plus') + '"></i></button><button class="action-btn" onclick="UserMgmt.resetPassword(\'' + user.id + '\')" title="Reset Password"><i data-lucide="key"></i></button><button class="action-btn danger" onclick="UserMgmt.deleteUser(\'' + user.id + '\')" title="Hapus"><i data-lucide="trash-2"></i></button></td></tr>';
     }).join('');
-    
     if (window.lucide) lucide.createIcons({ nodes: [tbody] });
   }
-	
-  // Format role label
+
   function formatRole(role) {
-    const roles = {
-      'admin': 'Admin',
-      'staff_gudang': 'Staff Gudang',
-      'checker_opname': 'Checker'
-    };
-    return roles[role] || role || '-';
+    var roles = { 'admin': 'Admin', 'staff_gudang': 'Staff Gudang', 'checker_opname': 'Checker' };
+    return roles[role] || escapeHtml(role) || '-';
   }
 
-  // User Management API object
   window.UserMgmt = {
     showAdd: function() {
       window.UserState.editingUserId = null;
-      
       document.getElementById('userModalTitle').textContent = 'Tambah User';
       document.getElementById('userUsername').value = '';
       document.getElementById('userUsername').disabled = false;
       document.getElementById('userEmail').value = '';
       document.getElementById('userNama').value = '';
-      document.getElementById('userRole').value = 'admin'; // Default to admin
+      document.getElementById('userRole').value = 'staff_gudang';
       document.getElementById('userPassword').value = '';
+      document.getElementById('userPassword').required = true;
       document.getElementById('userActive').checked = true;
-      document.getElementById('passwordHint').style.display = 'none';
-      
+      document.getElementById('passwordHint').style.display = 'inline';
+      document.getElementById('passwordHint').textContent = '(minimal 8 karakter)';
       document.getElementById('userModal').classList.add('active');
+      setTimeout(function() { document.getElementById('userUsername').focus(); }, 100);
     },
-
     showEdit: async function(id) {
       try {
-        const response = await fetch(`/api/v1/users/${id}`);
-        if (!response.ok) throw new Error('User tidak ditemukan');
-        const result = await response.json();
-        const user = result.data;
-        
+        var response = await fetch('/api/v1/users/' + id);
+        if (!response.ok) { if (response.status === 401) { showToast('Sesi berakhir.', false); return; } throw new Error(); }
+        var user = (await response.json()).data;
         window.UserState.editingUserId = id;
-        
         document.getElementById('userModalTitle').textContent = 'Edit User';
-        document.getElementById('userUsername').value = user.username || '';
+        document.getElementById('userUsername').value = escapeHtml(user.username || '');
         document.getElementById('userUsername').disabled = true;
-        document.getElementById('userEmail').value = user.email || '';
-        document.getElementById('userNama').value = user.name || user.nama_lengkap || '';
-        document.getElementById('userRole').value = user.role || 'admin';
+        document.getElementById('userEmail').value = escapeHtml(user.email || '');
+        document.getElementById('userNama').value = escapeHtml(user.name || user.nama_lengkap || '');
+        document.getElementById('userRole').value = user.role || 'staff_gudang';
         document.getElementById('userPassword').value = '';
+        document.getElementById('userPassword').required = false;
         document.getElementById('userActive').checked = user.is_active === true || user.status === 'active';
-        document.getElementById('passwordHint').style.display = 'inline';
-        
+        document.getElementById('passwordHint').textContent = '(kosongkan jika tidak diubah)';
         document.getElementById('userModal').classList.add('active');
-      } catch (error) {
-        console.error('Error loading user:', error);
-        showToast('Gagal memuat data user', false);
-      }
+      } catch (e) { showToast('Gagal memuat data', false); }
     },
-
-    closeModal: function() {
-      document.getElementById('userModal').classList.remove('active');
-      window.UserState.editingUserId = null;
-    },
-
-    saveUser: async function(event) {
-      event.preventDefault();
-      
-      const roleValue = document.getElementById('userRole').value;
-      
-      if (!roleValue) {
-        showToast('Role harus dipilih!', false);
-        return;
-      }
-      
-      const password = document.getElementById('userPassword').value;
-      const data = {
-        username: document.getElementById('userUsername').value,
-        email: document.getElementById('userEmail').value,
-        nama: document.getElementById('userNama').value,
-        role: roleValue,
-        status: document.getElementById('userActive').checked ? 'active' : 'inactive'
-      };
-      
-      if (password) {
-        data.password = password;
-      }
-
-      console.log('[USER SAVE]', data);
-
+    closeModal: function() { document.getElementById('userModal').classList.remove('active'); document.getElementById('userForm').reset(); window.UserState.editingUserId = null; },
+    saveUser: async function(e) {
+      e.preventDefault();
+      var btn = document.getElementById('saveUserBtn'), orig = btn.textContent;
+      var pwd = document.getElementById('userPassword').value;
+      var isEdit = window.UserState.editingUserId !== null;
+      if (!isEdit && pwd.length < 8) { showToast('Password minimal 8 karakter!', false); return; }
+      if (isEdit && pwd && pwd.length < 8) { showToast('Password minimal 8 karakter!', false); return; }
+      var data = { username: document.getElementById('userUsername').value.trim(), email: document.getElementById('userEmail').value.trim(), nama: document.getElementById('userNama').value.trim(), role: document.getElementById('userRole').value, status: document.getElementById('userActive').checked ? 'active' : 'inactive' };
+      if (pwd) data.password = pwd;
+      btn.disabled = true; btn.classList.add('btn--loading'); btn.textContent = '';
       try {
-        const isEdit = window.UserState.editingUserId !== null;
-        const url = isEdit ? `/api/v1/users/${window.UserState.editingUserId}` : '/api/v1/users';
-        const method = isEdit ? 'PUT' : 'POST';
-        
-        const response = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.message || 'Gagal menyimpan');
-        }
-        
+        var resp = await fetch(isEdit ? '/api/v1/users/' + window.UserState.editingUserId : '/api/v1/users', { method: isEdit ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+        if (!resp.ok) throw new Error((await resp.json().catch(function(){return{}})).message || 'Gagal');
         showToast(isEdit ? 'User berhasil diupdate' : 'User berhasil ditambahkan');
-        window.UserMgmt.closeModal();
-        loadUsers();
-      } catch (error) {
-        console.error('Error saving user:', error);
-        showToast(error.message || 'Gagal menyimpan user', false);
-      }
+        window.UserMgmt.closeModal(); loadUsers();
+      } catch (err) { showToast(err.message || 'Gagal menyimpan', false); }
+      finally { btn.disabled = false; btn.classList.remove('btn--loading'); btn.textContent = orig; }
     },
-
-    deleteUser: async function(id) {
-      if (!confirm('Yakin hapus user ini?')) return;
-      
-      try {
-        const response = await fetch(`/api/v1/users/${id}`, { method: 'DELETE' });
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.message || 'Gagal menghapus');
-        }
-        
-        showToast('User berhasil dihapus');
-        loadUsers();
-      } catch (error) {
-        console.error('Error deleting user:', error);
-        showToast(error.message || 'Gagal menghapus user', false);
-      }
-    },
-
-    toggleStatus: async function(id, enable) {
-      try {
-        const url = enable ? `/api/v1/users/${id}/enable` : `/api/v1/users/${id}/disable`;
-        const response = await fetch(url, { method: 'POST' });
-        
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.message || 'Gagal update status');
-        }
-        
-        showToast(enable ? 'User berhasil diaktifkan' : 'User berhasil dinonaktifkan');
-        loadUsers();
-      } catch (error) {
-        console.error('Error toggling user status:', error);
-        showToast(error.message || 'Gagal update status', false);
-      }
-    },
-
-    resetPassword: async function(id) {
-      if (!confirm('Reset password user ini?')) return;
-      
-      try {
-        const response = await fetch(`/api/v1/users/${id}/reset-password`, { method: 'POST' });
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.message || 'Gagal reset password');
-        }
-        
-        showToast('Password berhasil direset');
-        loadUsers();
-      } catch (error) {
-        console.error('Error resetting password:', error);
-        showToast(error.message || 'Gagal reset password', false);
-      }
-    }
+    deleteUser: async function(id) { if (!confirm('Yakin hapus user?')) return; try { var r = await fetch('/api/v1/users/' + id, {method:'DELETE'}); if (!r.ok) throw new Error((await r.json().catch(function(){return{}})).message); showToast('User dihapus'); loadUsers(); } catch(e) { showToast(e.message || 'Gagal', false); } },
+    toggleStatus: async function(id, enable) { var a = enable ? 'mengaktifkan' : 'menonaktifkan'; if (!confirm('Yakin ' + a + ' user?')) return; try { var r = await fetch('/api/v1/users/' + id + '/' + (enable ? 'enable' : 'disable'), {method:'POST'}); if (!r.ok) throw new Error((await r.json().catch(function(){return{}})).message); showToast(enable ? 'Diaktifkan' : 'Dinonaktifkan'); loadUsers(); } catch(e) { showToast(e.message || 'Gagal', false); } },
+    resetPassword: async function(id) { if (!confirm('Reset password?')) return; try { var r = await fetch('/api/v1/users/' + id + '/reset-password', {method:'POST'}); if (!r.ok) throw new Error((await r.json().catch(function(){return{}})).message); showToast('Password direset'); loadUsers(); } catch(e) { showToast(e.message || 'Gagal', false); } }
   };
 
-  // Alias untuk backward compatibility
   window.showAddUserModal = window.UserMgmt.showAdd;
   window.editUser = window.UserMgmt.showEdit;
   window.closeUserModal = window.UserMgmt.closeModal;
@@ -372,15 +241,9 @@
   window.deleteUser = window.UserMgmt.deleteUser;
   window.toggleUserStatus = window.UserMgmt.toggleStatus;
   window.resetUserPassword = window.UserMgmt.resetPassword;
-
-  // Filter handlers
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') window.UserMgmt.closeModal(); });
   document.getElementById('filterRole')?.addEventListener('change', loadUsers);
   document.getElementById('filterStatus')?.addEventListener('change', loadUsers);
-
-  // Init
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadUsers);
-  } else {
-    loadUsers();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadUsers); else loadUsers();
 })();
+</script>

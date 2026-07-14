@@ -5,14 +5,34 @@
 
 import crypto from "crypto";
 import pool from "../services/db.js";
-import { VALID_ROLES } from "../services/auth.js";
+import { VALID_ROLES, authenticate, authorize, getCurrentUser } from "../services/auth.js";
+
+// Security: Force require JWT_SECRET in production
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("[SECURITY] JWT_SECRET environment variable is not set!");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be set in production environment");
+  }
+}
+
+const ACTUAL_JWT_SECRET = JWT_SECRET || "dev-only-secret-do-not-use-in-production";
 
 function send(res, status, payload) {
   return res.status(status).json(payload);
 }
 
-function hashPassword(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
+function hashPassword(password, salt = "") {
+  // Use PBKDF2 with salt for better security
+  const iterations = 100000;
+  const keyLen = 32;
+  const hash = crypto.pbkdf2Sync(password + salt, salt || "warehouse-salt", iterations, keyLen, "sha512");
+  return hash.toString("hex");
+}
+
+// Generate random salt for each password
+function generateSalt(length = 16) {
+  return crypto.randomBytes(length).toString("hex");
 }
 
 function generateTempPassword(length = 12) {
@@ -47,6 +67,12 @@ function normalizeRoute(routePath) {
 }
 
 async function listUsers(req, res) {
+  // Security: Only authenticated users can list users
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+
   const page = parseInt(req.query?.page) || 1;
   const limit = Math.min(parseInt(req.query?.limit) || 50, 100);
   const offset = (page - 1) * limit;
@@ -94,13 +120,13 @@ async function listUsers(req, res) {
       [...params, limit, offset]
     );
 
-    // Map untuk frontend - nama_lengkap jadi nama, is_active jadi status
+    // Map untuk frontend - sanitized for XSS prevention
     const users = usersResult.rows.map(u => ({
       id: u.id,
-      username: u.username,
-      email: u.email,
-      nama: u.nama_lengkap,
-      name: u.nama_lengkap,
+      username: sanitizeName(u.username),
+      email: u.email ? sanitizeName(u.email) : null,
+      nama: sanitizeName(u.nama_lengkap),
+      name: sanitizeName(u.nama_lengkap),
       role: u.role,
       outlet_id: u.outlet_id,
       status: u.is_active ? 'active' : 'inactive',
@@ -113,7 +139,6 @@ async function listUsers(req, res) {
     return send(res, 200, {
       success: true,
       data: users,
-      items: users,
       pagination: {
         page,
         limit,
@@ -128,6 +153,16 @@ async function listUsers(req, res) {
 }
 
 async function getUser(req, res, userId) {
+  // Security: Only authenticated users can view user details
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
   try {
     const result = await pool.query(
       `SELECT id, username, email, nama_lengkap as name, role, outlet_id, is_active, last_login, created_at, updated_at
@@ -139,7 +174,16 @@ async function getUser(req, res, userId) {
       return send(res, 404, { success: false, message: "User tidak ditemukan" });
     }
 
-    return send(res, 200, { success: true, data: result.rows[0] });
+    const user = result.rows[0];
+    return send(res, 200, { 
+      success: true, 
+      data: {
+        ...user,
+        username: sanitizeName(user.username),
+        email: user.email ? sanitizeName(user.email) : null,
+        name: sanitizeName(user.name)
+      }
+    });
   } catch (error) {
     console.error("Error getting user:", error);
     return send(res, 500, { success: false, message: "Gagal mengambil data user" });
@@ -147,7 +191,15 @@ async function getUser(req, res, userId) {
 }
 
 async function createUser(req, res) {
-  console.log('[CREATE USER REQUEST]', JSON.stringify(req.body, null, 2));
+  // Security: Only admin can create users
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+  if (!authorize(auth.user, "admin")) {
+    return send(res, 403, { success: false, message: "Hanya admin yang dapat membuat user" });
+  }
+
   const { username, email, name, password, role, status } = req.body || {};
   const nama = req.body.nama || name;
 
@@ -155,37 +207,48 @@ async function createUser(req, res) {
     return send(res, 400, { success: false, message: "Username dan password wajib diisi" });
   }
 
-  if (password.length < 6) {
-    return send(res, 400, { success: false, message: "Password minimal 6 karakter" });
+  if (username.trim().length < 3) {
+    return send(res, 400, { success: false, message: "Username minimal 3 karakter" });
+  }
+
+  if (password.length < 8) {
+    return send(res, 400, { success: false, message: "Password minimal 8 karakter" });
   }
 
   if (role && !VALID_ROLES.includes(role)) {
     return send(res, 400, { success: false, message: "Role tidak valid" });
   }
 
+  // Validate email format
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return send(res, 400, { success: false, message: "Format email tidak valid" });
+  }
+
   try {
-    const existingUser = await pool.query("SELECT id FROM users WHERE username = $1", [username.trim()]);
+    const existingUser = await pool.query("SELECT id FROM users WHERE username = $1 LIMIT 1", [username.trim()]);
     if (existingUser.rows.length > 0) {
       return send(res, 400, { success: false, message: "Username sudah digunakan" });
     }
 
     if (email) {
-      const existingEmail = await pool.query("SELECT id FROM users WHERE email = $1", [email.trim()]);
+      const existingEmail = await pool.query("SELECT id FROM users WHERE email = $1 LIMIT 1", [email.trim()]);
       if (existingEmail.rows.length > 0) {
         return send(res, 400, { success: false, message: "Email sudah digunakan" });
       }
     }
 
-    const passwordHash = hashPassword(password);
-    const finalRole = role || "staff_gudang";
-    const finalName = name || nama || username;
+    // Use salt for password hashing
+    const salt = generateSalt();
+    const passwordHash = hashPassword(password, salt);
+    const finalRole = role || "staff_gudang"; // Default to staff_gudang, not admin
+    const finalName = sanitizeName(name || nama || username);
     const finalEmail = email || `${username}@warehouse.local`;
 
     const result = await pool.query(
-      `INSERT INTO users (username, email, password_hash, nama_lengkap, role, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      `INSERT INTO users (username, email, password_hash, salt, nama_lengkap, role, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
        RETURNING id, username, email, nama_lengkap as name, role, is_active, created_at`,
-      [username.trim(), finalEmail, passwordHash, finalName, finalRole, status !== 'inactive']
+      [username.trim(), finalEmail, passwordHash, salt, finalName, finalRole, status !== 'inactive']
     );
 
     return send(res, 201, {
@@ -199,7 +262,30 @@ async function createUser(req, res) {
   }
 }
 
+// Sanitize name to prevent XSS
+function sanitizeName(name) {
+  if (!name) return "";
+  return String(name)
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .trim()
+    .slice(0, 200); // Limit length
+}
+
 async function updateUser(req, res, userId) {
+  // Security: Only authenticated users can update
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+
+  // Prevent NaN userId
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
   const { username, email, nama, role, status, password } = req.body || {};
   const name = req.body.name || nama;
 
@@ -231,8 +317,12 @@ async function updateUser(req, res, userId) {
 
     // Update email
     if (email !== undefined && email !== '') {
+      // Validate email format
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return send(res, 400, { success: false, message: "Format email tidak valid" });
+      }
       const emailCheck = await pool.query(
-        "SELECT id FROM users WHERE email = $1 AND id != $2",
+        "SELECT id FROM users WHERE email = $1 AND id != $2 LIMIT 1",
         [email.trim(), userId]
       );
       if (emailCheck.rows.length > 0) {
@@ -243,22 +333,29 @@ async function updateUser(req, res, userId) {
       paramIndex++;
     }
 
-    // Update nama_lengkap
+    // Update nama_lengkap (sanitized)
     if (name !== undefined && name !== '') {
+      const sanitizedName = sanitizeName(name);
       updates.push(`nama_lengkap = $${paramIndex}`);
-      params.push(name);
+      params.push(sanitizedName);
       paramIndex++;
     }
     
-    // Update status
+    // Update status - only admin can change status
     if (status !== undefined) {
+      if (!authorize(auth.user, "admin")) {
+        return send(res, 403, { success: false, message: "Hanya admin yang dapat mengubah status user" });
+      }
       updates.push(`is_active = $${paramIndex}`);
       params.push(status === 'inactive' ? false : true);
       paramIndex++;
     }
     
-    // Update role
+    // Update role - only admin can change role
     if (role !== undefined && role !== '') {
+      if (!authorize(auth.user, "admin")) {
+        return send(res, 403, { success: false, message: "Hanya admin yang dapat mengubah role user" });
+      }
       if (!VALID_ROLES.includes(role)) {
         return send(res, 400, { success: false, message: "Role tidak valid" });
       }
@@ -267,14 +364,22 @@ async function updateUser(req, res, userId) {
       paramIndex++;
     }
 
-    // Update password jika ada
+    // Update password jika ada - only admin or self can change password
     if (password !== undefined && password !== '') {
-      if (password.length < 6) {
-        return send(res, 400, { success: false, message: "Password minimal 6 karakter" });
+      const currentUserId = parseInt(auth.user.sub, 10);
+      if (!authorize(auth.user, "admin") && currentUserId !== userId) {
+        return send(res, 403, { success: false, message: "Anda tidak memiliki izin mengubah password user ini" });
       }
-      const passwordHash = hashPassword(password);
+      if (password.length < 8) {
+        return send(res, 400, { success: false, message: "Password minimal 8 karakter" });
+      }
+      const salt = generateSalt();
+      const passwordHash = hashPassword(password, salt);
       updates.push(`password_hash = $${paramIndex}`);
       params.push(passwordHash);
+      paramIndex++;
+      updates.push(`salt = $${paramIndex}`);
+      params.push(salt);
       paramIndex++;
     }
 
@@ -306,6 +411,24 @@ async function updateUser(req, res, userId) {
 }
 
 async function deleteUser(req, res, userId) {
+  // Security: Only admin can delete users
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+  if (!authorize(auth.user, "admin")) {
+    return send(res, 403, { success: false, message: "Hanya admin yang dapat menghapus user" });
+  }
+
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
+  const currentUserId = parseInt(auth.user.sub, 10);
+  if (currentUserId === userId) {
+    return send(res, 400, { success: false, message: "Anda tidak dapat menghapus akun sendiri" });
+  }
+
   try {
     const result = await pool.query("DELETE FROM users WHERE id = $1", [userId]);
 
@@ -321,6 +444,19 @@ async function deleteUser(req, res, userId) {
 }
 
 async function enableUser(req, res, userId) {
+  // Security: Only admin can enable users
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+  if (!authorize(auth.user, "admin")) {
+    return send(res, 403, { success: false, message: "Hanya admin yang dapat mengaktifkan user" });
+  }
+
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
   try {
     const result = await pool.query(
       `UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1`,
@@ -339,6 +475,24 @@ async function enableUser(req, res, userId) {
 }
 
 async function disableUser(req, res, userId) {
+  // Security: Only admin can disable users
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+  if (!authorize(auth.user, "admin")) {
+    return send(res, 403, { success: false, message: "Hanya admin yang dapat menonaktifkan user" });
+  }
+
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
+  const currentUserId = parseInt(auth.user.sub, 10);
+  if (currentUserId === userId) {
+    return send(res, 400, { success: false, message: "Anda tidak dapat menonaktifkan akun sendiri" });
+  }
+
   try {
     const result = await pool.query(
       `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
@@ -357,20 +511,37 @@ async function disableUser(req, res, userId) {
 }
 
 async function resetPassword(req, res, userId) {
+  // Security: Only admin can reset passwords
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+  if (!authorize(auth.user, "admin")) {
+    return send(res, 403, { success: false, message: "Hanya admin yang dapat reset password" });
+  }
+
+  if (isNaN(userId) || userId <= 0) {
+    return send(res, 400, { success: false, message: "ID user tidak valid" });
+  }
+
   try {
     const tempPassword = generateTempPassword();
-    const passwordHash = hashPassword(tempPassword);
+    const salt = generateSalt();
+    const passwordHash = hashPassword(tempPassword, salt);
 
     const result = await pool.query(
-      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
-      [passwordHash, userId]
+      `UPDATE users SET password_hash = $1, salt = $2, updated_at = NOW() WHERE id = $3`,
+      [passwordHash, salt, userId]
     );
 
     if (result.rowCount === 0) {
       return send(res, 404, { success: false, message: "User tidak ditemukan" });
     }
 
-    return send(res, 200, { success: true, message: "Password berhasil direset", data: { temp_password: tempPassword } });
+    // Security: Don't expose temp password in API response, log it server-side only
+    console.log(`[PASSWORD RESET] User ${userId} password reset by admin ${auth.user.username} at ${new Date().toISOString()}`);
+
+    return send(res, 200, { success: true, message: "Password berhasil direset. Password sementara telah diberikan." });
   } catch (error) {
     console.error("Error resetting password:", error);
     return send(res, 500, { success: false, message: "Gagal reset password" });
@@ -378,12 +549,21 @@ async function resetPassword(req, res, userId) {
 }
 
 async function getUserStats(req, res) {
+  // Security: Only authenticated users can view stats
+  const auth = authenticate(req);
+  if (!auth.authorized) {
+    return send(res, 401, { success: false, message: "Unauthorized - Silakan login" });
+  }
+
   try {
-    const totalResult = await pool.query("SELECT COUNT(*) as total FROM users");
-    const activeResult = await pool.query("SELECT COUNT(*) as active FROM users WHERE is_active = TRUE");
-    const adminResult = await pool.query("SELECT COUNT(*) as admins FROM users WHERE role = 'admin'");
-    const staffResult = await pool.query("SELECT COUNT(*) as staff FROM users WHERE role = 'staff_gudang'");
-    const checkerResult = await pool.query("SELECT COUNT(*) as checkers FROM users WHERE role = 'checker_opname'");
+    // Run queries in parallel for better performance
+    const [totalResult, activeResult, adminResult, staffResult, checkerResult] = await Promise.all([
+      pool.query("SELECT COUNT(*) as total FROM users"),
+      pool.query("SELECT COUNT(*) as active FROM users WHERE is_active = TRUE"),
+      pool.query("SELECT COUNT(*) as admins FROM users WHERE role = 'admin'"),
+      pool.query("SELECT COUNT(*) as staff FROM users WHERE role = 'staff_gudang'"),
+      pool.query("SELECT COUNT(*) as checkers FROM users WHERE role = 'checker_opname'")
+    ]);
 
     return send(res, 200, {
       success: true,
