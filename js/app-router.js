@@ -7,6 +7,7 @@ const AppRouter = {
   // Route configuration
   routes: {
     'dashboard': 'pages/dashboard.html',
+    'produk': 'pages/produk.html',
     'penjualan': 'pages/penjualan.html',
     'pembelian': 'pages/pembelian.html',
     'persediaan': 'pages/persediaan.html',
@@ -82,6 +83,7 @@ const AppRouter = {
   updatePageTitle(page) {
     const titles = {
       'dashboard': 'Dashboard',
+      'produk': 'Produk',
       'penjualan': 'Penjualan',
       'pembelian': 'Pembelian',
       'persediaan': 'Persediaan',

@@ -98,7 +98,8 @@
     try {
       const response = await fetch('/api/v1/produk');
       if (!response.ok) throw new Error('Failed to load produk');
-      produkList = await response.json();
+      const data = await response.json();
+      produkList = data.produk || data.data || [];
       renderProdukTable();
     } catch (error) {
       console.error('Error loading produk:', error);
@@ -117,15 +118,15 @@
     tbody.innerHTML = produkList.map(p => `
       <tr>
         <td><code>${p.sku}</code></td>
-        <td>${p.nama}</td>
-        <td><span class="badge">${p.kategori}</span></td>
-        <td>${p.stok}</td>
-        <td>${p.stok_minimum}</td>
+        <td>${p.nama_produk}</td>
+        <td><span class="badge">${p.kategori || '-'}</span></td>
+        <td>${p.stok || 0}</td>
+        <td>${p.stok_minimum || 10}</td>
         <td>
-          <button class="action-btn" onclick="editProduk('${p.id}')">
+          <button class="action-btn" onclick="editProduk('${p.sku}')">
             <i data-lucide="edit-2"></i>
           </button>
-          <button class="action-btn danger" onclick="deleteProduk('${p.id}')">
+          <button class="action-btn danger" onclick="deleteProduk('${p.sku}')">
             <i data-lucide="trash-2"></i>
           </button>
         </td>
@@ -142,16 +143,16 @@
     document.getElementById('produkModal').style.display = 'flex';
   }
 
-  function editProduk(id) {
-    const produk = produkList.find(p => p.id == id);
+  function editProduk(sku) {
+    const produk = produkList.find(p => p.sku == sku);
     if (!produk) return;
     
-    editingId = id;
+    editingId = sku;
     document.getElementById('produkModalTitle').textContent = 'Edit Produk';
     document.getElementById('produkSku').value = produk.sku;
-    document.getElementById('produkNama').value = produk.nama;
-    document.getElementById('produkKategori').value = produk.kategori;
-    document.getElementById('produkStokMin').value = produk.stok_minimum;
+    document.getElementById('produkNama').value = produk.nama_produk;
+    document.getElementById('produkKategori').value = produk.kategori || 'lain';
+    document.getElementById('produkStokMin').value = produk.stok_minimum || 10;
     document.getElementById('produkModal').style.display = 'flex';
   }
 
@@ -165,9 +166,9 @@
     
     const data = {
       sku: document.getElementById('produkSku').value,
-      nama: document.getElementById('produkNama').value,
+      nama_produk: document.getElementById('produkNama').value,
       kategori: document.getElementById('produkKategori').value,
-      stok_minimum: document.getElementById('produkStokMin').value
+      stok_minimum: parseInt(document.getElementById('produkStokMin').value)
     };
 
     try {
@@ -191,11 +192,11 @@
     }
   }
 
-  async function deleteProduk(id) {
+  async function deleteProduk(sku) {
     if (!confirm('Yakin hapus produk ini?')) return;
     
     try {
-      const response = await fetch(`/api/v1/produk/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/v1/produk/${sku}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to delete');
       
       showToast('Produk berhasil dihapus');
