@@ -9,21 +9,6 @@ export default async function handler(req, res) {
   const skuFromPath = pathParts[pathParts.length - 1];
   
   try {
-    // Add kategori column if not exists (non-blocking)
-    try {
-      await pool.query(`
-        ALTER TABLE produk 
-        ADD COLUMN IF NOT EXISTS kategori VARCHAR(50) DEFAULT 'lain_lain'
-      `);
-    } catch (e) { /* ignore if exists */ }
-    
-    try {
-      await pool.query(`
-        ALTER TABLE produk 
-        ADD COLUMN IF NOT EXISTS stok_minimum INTEGER DEFAULT 10
-      `);
-    } catch (e) { /* ignore if exists */ }
-
     switch (method) {
       case 'GET': {
         // GET /v1/produk or GET /v1/produk/:sku
@@ -91,12 +76,12 @@ async function getAllProduk(req, res) {
   );
   const total = parseInt(countResult.rows[0].count);
   
-  // Get produk with calculated stok
+  // Get produk with calculated stok (simplified query)
   const query = `
     SELECT 
       p.sku as id,
       p.sku,
-      p.nama_produk as nama,
+      p.nama_produk,
       COALESCE(p.kategori, 'lain_lain') as kategori,
       COALESCE(p.stok_minimum, 10) as stok_minimum,
       p.harga_beli,
@@ -132,7 +117,8 @@ async function getAllProduk(req, res) {
   const result = await pool.query(query, params);
   
   return res.status(200).json({
-    data: result.rows,
+    success: true,
+    produk: result.rows,
     pagination: {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -147,7 +133,7 @@ async function getProdukBySku(req, res, sku) {
     SELECT 
       p.sku as id,
       p.sku,
-      p.nama_produk as nama,
+      p.nama_produk,
       COALESCE(p.kategori, 'lain_lain') as kategori,
       COALESCE(p.stok_minimum, 10) as stok_minimum,
       p.harga_beli,
@@ -186,9 +172,9 @@ async function getProdukBySku(req, res, sku) {
 }
 
 async function createProduk(req, res) {
-  const { sku, nama, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
+  const { sku, nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
-  if (!sku || !nama) {
+  if (!sku || !nama_produk) {
     return res.status(400).json({ error: 'SKU and Nama are required' });
   }
   
@@ -206,7 +192,7 @@ async function createProduk(req, res) {
   
   const values = [
     sku,
-    nama,
+    nama_produk,
     kategori || 'lain_lain',
     stok_minimum || 10,
     harga_beli || 0,
@@ -222,7 +208,7 @@ async function createProduk(req, res) {
 }
 
 async function updateProduk(req, res, sku) {
-  const { nama, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
+  const { nama_produk, kategori, stok_minimum, harga_beli, harga_jual } = req.body || {};
   
   // Check if produk exists
   const existing = await pool.query('SELECT sku FROM produk WHERE sku = $1', [sku]);
@@ -234,9 +220,9 @@ async function updateProduk(req, res, sku) {
   const values = [];
   let paramIndex = 1;
   
-  if (nama !== undefined) {
+  if (nama_produk !== undefined) {
     updates.push(`nama_produk = $${paramIndex}`);
-    values.push(nama);
+    values.push(nama_produk);
     paramIndex++;
   }
   
