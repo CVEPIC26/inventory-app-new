@@ -68,29 +68,21 @@ export default async function handler(req, res) {
           ORDER BY o.nama_outlet
         `);
         
-        // Debug: Check if there are transactions for outlets in outlet_master
-        const debugTransaksi = await pool.query(`
-          SELECT COUNT(DISTINCT pj.nama_outlet) as outlet_dengan_transaksi
-          FROM penjualan pj
-          INNER JOIN outlet_master om ON UPPER(pj.nama_outlet) = UPPER(
-            (SELECT o2.nama_outlet FROM outlet o2 WHERE o2.id = om.outlet_id)
-          )
-          WHERE pj.tanggal >= $1 AND pj.tanggal <= $2
-        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
-        
-        console.log('DEBUG: Outlet dengan transaksi:', debugTransaksi.rows[0]);
-        
-        // Get outlets WITH transactions in this period (direct join via nama_outlet)
+        // Get outlets WITH transactions - simplified query
         const outletTransaksiData = await pool.query(`
-          SELECT o.id, o.nama_outlet,
-            COALESCE(SUM(pj.qty), 0) AS total_qty,
-            COUNT(pj.id) AS jumlah_transaksi
-          FROM outlet_master om
-          JOIN outlet o ON o.id = om.outlet_id
-          INNER JOIN penjualan pj ON UPPER(TRIM(pj.nama_outlet)) = UPPER(TRIM(o.nama_outlet))
-            AND pj.tanggal >= $1 AND pj.tanggal <= $2
-          WHERE om.is_active = TRUE
-          GROUP BY o.id, o.nama_outlet
+          SELECT 
+            pj.nama_outlet,
+            SUM(pj.qty) AS total_qty,
+            COUNT(*) AS jumlah_transaksi
+          FROM penjualan pj
+          WHERE pj.tanggal >= $1 AND pj.tanggal <= $2
+          AND UPPER(TRIM(pj.nama_outlet)) IN (
+            SELECT UPPER(TRIM(o2.nama_outlet)) 
+            FROM outlet_master om2 
+            JOIN outlet o2 ON o2.id = om2.outlet_id 
+            WHERE om2.is_active = TRUE
+          )
+          GROUP BY pj.nama_outlet
           ORDER BY total_qty DESC
         `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
         
@@ -100,13 +92,13 @@ export default async function handler(req, res) {
           FROM outlet_master om
           JOIN outlet o ON o.id = om.outlet_id
           WHERE om.is_active = TRUE
-          AND NOT EXISTS (
-            SELECT 1 FROM penjualan pj 
-            WHERE UPPER(pj.nama_outlet) = UPPER(o.nama_outlet) 
-            AND pj.tanggal >= $2 AND pj.tanggal <= $3
+          AND UPPER(TRIM(o.nama_outlet)) NOT IN (
+            SELECT DISTINCT UPPER(TRIM(pj.nama_outlet))
+            FROM penjualan pj
+            WHERE pj.tanggal >= $1 AND pj.tanggal <= $2
           )
           ORDER BY o.nama_outlet
-        `, [allMasterOutlets.rows[0]?.id || 0, startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
         
         outletStats = {
           rows: [{
