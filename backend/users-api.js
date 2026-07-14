@@ -7,27 +7,21 @@ import crypto from "crypto";
 import pool from "../services/db.js";
 import { VALID_ROLES, authenticate, authorize, getCurrentUser } from "../services/auth.js";
 
-// Security: Force require JWT_SECRET in production
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("[SECURITY] JWT_SECRET environment variable is not set!");
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("JWT_SECRET must be set in production environment");
-  }
+// Security: Warn if JWT_SECRET is not set
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-in-production-please-set-jwt-secret";
+if (!process.env.JWT_SECRET) {
+  console.warn("[SECURITY WARNING] JWT_SECRET not set! Using fallback. Set JWT_SECRET env var in production.");
 }
-
-const ACTUAL_JWT_SECRET = JWT_SECRET || "dev-only-secret-do-not-use-in-production";
 
 function send(res, status, payload) {
   return res.status(status).json(payload);
 }
 
 function hashPassword(password, salt = "") {
-  // Use PBKDF2 with salt for better security
+  // Use PBKDF2 for better security (compatible with auth.js werkzeug format)
   const iterations = 100000;
-  const keyLen = 32;
-  const hash = crypto.pbkdf2Sync(password + salt, salt || "warehouse-salt", iterations, keyLen, "sha512");
-  return hash.toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256").toString("hex");
+  return `pbkdf2:sha256:${iterations}:${salt}$${hash}`;
 }
 
 // Generate random salt for each password
