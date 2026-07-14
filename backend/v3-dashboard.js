@@ -43,13 +43,16 @@ export default async function handler(req, res) {
     // Check if July 2025 or later (outlet_master active)
     const isJuliAtauSesudahnya = (filterTahun > 2025) || (filterTahun === 2025 && filterBulan >= 7);
     
+    // Determine if we should use outlet_master (will be set after table check)
+    let useOutletMaster = false;
+    
     try {
       // Check if outlet_master table exists
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.outlet_master') IS NOT NULL AS exists
       `);
       
-      const useOutletMaster = isJuliAtauSesudahnya && tableCheck.rows[0]?.exists;
+      useOutletMaster = isJuliAtauSesudahnya && tableCheck.rows[0]?.exists;
       
       if (useOutletMaster) {
         // === JULI 2025+ LOGIC: Gunakan outlet_master ===
