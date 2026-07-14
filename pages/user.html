@@ -264,23 +264,6 @@
       
       const roleValue = document.getElementById('userRole').value;
       
-      // DEBUG: Log all select options
-      const roleSelect = document.getElementById('userRole');
-      if (roleSelect) {
-        console.log('[DEBUG] userRole select found');
-        console.log('[DEBUG] selectedIndex:', roleSelect.selectedIndex);
-        console.log('[DEBUG] selectedValue:', roleSelect.value);
-        const opts = roleSelect.options;
-        if (opts) {
-          console.log('[DEBUG] options:', opts.length, 'options');
-          for (let i = 0; i < opts.length; i++) {
-            console.log(`  [${i}]: value="${opts[i].value}", text="${opts[i].text}", selected=${opts[i].selected}`);
-          }
-        }
-      } else {
-        console.log('[DEBUG] userRole select NOT FOUND!');
-      }
-      
       if (!roleValue) {
         showToast('Role harus dipilih!', false);
         return;

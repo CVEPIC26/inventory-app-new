@@ -41,6 +41,8 @@ import usersApiHandler from "../backend/users-api.js";
 import approvalApiHandler from "../backend/approval-api.js";
 import settingsApiHandler from "../backend/settings-api.js";
 import apiStokHandler from "../backend/api-stok.js";
+import v1ProdukHandler from "../backend/v1-produk.js";
+import v1StokGudangHandler from "../backend/v1-stok-gudang.js";
 import { isDatabaseConfigured, checkDatabaseHealth } from "../services/db.js";
 
 // Health check handler
@@ -83,6 +85,12 @@ const routes = {
   "POST /v1/users/:id/enable": usersApiHandler,
   "POST /v1/users/:id/disable": usersApiHandler,
   "POST /v1/users/:id/reset-password": usersApiHandler,
+
+  // Produk management routes (CRUD)
+  "GET /v1/produk": v1ProdukHandler,
+  "POST /v1/produk": v1ProdukHandler,
+  "PUT /v1/produk/:sku": v1ProdukHandler,
+  "DELETE /v1/produk/:sku": v1ProdukHandler,
 
   // Approval management routes
   "GET /v1/approvals": approvalApiHandler,
@@ -145,6 +153,7 @@ const routes = {
   "GET /v1/stok/realtime": apiStokHandler,
   "GET /v1/stok/kartu": apiStokHandler,
   "GET /v1/stok/mutasi": apiStokHandler,
+  "GET /v1/stok/gudang": v1StokGudangHandler,
 
   // GET /forecast REMOVED - feature deprecated
   "GET /produk-list": produkListHandler,

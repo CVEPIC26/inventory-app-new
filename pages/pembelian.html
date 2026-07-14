@@ -1412,40 +1412,14 @@
     showToast('Export Excel berhasil');
   }
 
-  // Toast notification
+  // Toast notification - use global function from app.html
   function showToast(message, isSuccess = true) {
-    // Check if toast function exists in global scope
-    if (typeof window.showToastMessage === 'function') {
-      window.showToastMessage(message, isSuccess ? 'success' : 'error');
-      return;
+    if (typeof window.showToast === 'function') {
+      window.showToast(message, isSuccess ? 'success' : 'error');
+    } else {
+      // Fallback: simple alert
+      alert(message);
     }
-    
-    // Fallback: create toast manually
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'toast-container';
-      document.body.appendChild(container);
-    }
-    
-    const toast = document.createElement('div');
-    toast.className = `toast toast--${isSuccess ? 'success' : 'error'}`;
-    toast.innerHTML = `
-      <i data-lucide="${isSuccess ? 'check-circle' : 'alert-circle'}"></i>
-      <span>${message}</span>
-    `;
-    
-    container.appendChild(toast);
-    if (window.lucide) lucide.createIcons({ nodes: [toast] });
-    
-    // Trigger animation
-    setTimeout(() => toast.classList.add('show'), 10);
-    
-    // Remove after 3s
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
   }
 
   // Initialize

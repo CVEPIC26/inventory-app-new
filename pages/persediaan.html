@@ -593,9 +593,6 @@ async function loadStokPeriode(page = 1) {
     if (!response.ok) throw new Error('Failed to load data');
     
     const result = await response.json();
-    console.log('[DEBUG] loadStokPeriode response:', result);
-    console.log('[DEBUG] result.data.length:', result.data?.length);
-    console.log('[DEBUG] result.data fields:', result.data?.length > 0 ? Object.keys(result.data[0]) : 'N/A');
     
     if (!result.success) {
       throw new Error(result.message || 'Gagal memuat data');
@@ -773,9 +770,6 @@ async function loadKartuStok(page = 1) {
     if (!response.ok) throw new Error('Failed to load data');
     
     const result = await response.json();
-    console.log('[DEBUG] loadKartuStok response:', result);
-    console.log('[DEBUG] result.data.length:', result.data?.length);
-    console.log('[DEBUG] result.data fields:', result.data?.length > 0 ? Object.keys(result.data[0]) : 'N/A');
     
     if (!result.success) {
       throw new Error(result.message || 'Gagal memuat data');
@@ -988,36 +982,15 @@ function exportExcel() {
 }
 
 // ============================================
-// TOAST
+// TOAST - use global function from app.html
 // ============================================
 function showToast(message, isSuccess = true) {
-  if (typeof window.showToastMessage === 'function') {
-    window.showToastMessage(message, isSuccess ? 'success' : 'error');
-    return;
+  if (typeof window.showToast === 'function') {
+    window.showToast(message, isSuccess ? 'success' : 'error');
+  } else {
+    // Fallback: simple alert
+    alert(message);
   }
-  
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-  
-  const toast = document.createElement('div');
-  toast.className = `toast toast--${isSuccess ? 'success' : 'error'}`;
-  toast.innerHTML = `
-    <i data-lucide="${isSuccess ? 'check-circle' : 'alert-circle'}"></i>
-    <span>${message}</span>
-  `;
-  
-  container.appendChild(toast);
-  if (window.lucide) lucide.createIcons({ nodes: [toast] });
-  
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
 }
 
 // ============================================
