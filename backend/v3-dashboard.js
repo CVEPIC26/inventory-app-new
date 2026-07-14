@@ -36,44 +36,110 @@ export default async function handler(req, res) {
       WHERE j.tanggal >= $1 AND j.tanggal <= $2
     `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
 
-    // 2a. Outlet Stats - Transaksi vs Non Transaksi (dari penjualan langsung)
+    // 2a. Outlet Stats - Transaksi vs Non Transaksi
+    // LOGIC: Untuk Juli 2025+ gunakan outlet_master, untuk sebelumnya gunakan data penjualan
     let outletStats = { rows: [{ total_outlet: 0, outlet_transaksi: 0, outlet_non_transaksi: 0, outlet_detail: [], outlet_non_transaksi_detail: [] }] };
+    
+    // Check if July 2025 or later (outlet_master active)
+    const isJuliAtauSesudahnya = (filterTahun > 2025) || (filterTahun === 2025 && filterBulan >= 7);
+    
     try {
-      // Get outlet WITH transactions (ada di penjualan)
-      const outletTransaksiData = await pool.query(`
-        SELECT o.id, o.nama_outlet,
-          COALESCE(SUM(pj.qty), 0) AS total_qty,
-          COUNT(pj.id) AS jumlah_transaksi
-        FROM outlet o
-        INNER JOIN penjualan pj ON UPPER(pj.nama_outlet) = UPPER(o.nama_outlet)
-          AND pj.tanggal >= $1 AND pj.tanggal <= $2
-        GROUP BY o.id, o.nama_outlet
-        ORDER BY total_qty DESC
-      `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+      // Check if outlet_master table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.outlet_master') IS NOT NULL AS exists
+      `);
       
-      // Get outlet WITHOUT transactions (ada di outlet tapi tidak ada di penjualan periode ini)
-      const outletNonTransaksiData = await pool.query(`
-        SELECT o.id, o.nama_outlet
-        FROM outlet o
-        WHERE NOT EXISTS (
-          SELECT 1 FROM penjualan pj 
-          WHERE UPPER(pj.nama_outlet) = UPPER(o.nama_outlet) 
-          AND pj.tanggal >= $1 AND pj.tanggal <= $2
-        )
-        ORDER BY o.nama_outlet
-      `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+      const useOutletMaster = isJuliAtauSesudahnya && tableCheck.rows[0]?.exists;
       
-      const totalOutlet = await pool.query(`SELECT COUNT(*) AS total FROM outlet`);
-      
-      outletStats = {
-        rows: [{
-          total_outlet: Number(totalOutlet.rows[0]?.total || 0),
-          outlet_transaksi: outletTransaksiData.rows.length,
-          outlet_non_transaksi: outletNonTransaksiData.rows.length,
-          outlet_detail: outletTransaksiData.rows,
-          outlet_non_transaksi_detail: outletNonTransaksiData.rows
-        }]
-      };
+      if (useOutletMaster) {
+        // === JULI 2025+ LOGIC: Gunakan outlet_master ===
+        
+        // Get all active outlets from outlet_master
+        const allMasterOutlets = await pool.query(`
+          SELECT o.id, o.nama_outlet
+          FROM outlet_master om
+          JOIN outlet o ON o.id = om.outlet_id
+          WHERE om.is_active = TRUE
+          ORDER BY o.nama_outlet
+        `);
+        
+        // Get outlets WITH transactions in this period
+        const outletTransaksiData = await pool.query(`
+          SELECT o.id, o.nama_outlet,
+            COALESCE(SUM(pj.qty), 0) AS total_qty,
+            COUNT(pj.id) AS jumlah_transaksi
+          FROM outlet_master om
+          JOIN outlet o ON o.id = om.outlet_id
+          INNER JOIN penjualan pj ON UPPER(pj.nama_outlet) = UPPER(o.nama_outlet)
+            AND pj.tanggal >= $1 AND pj.tanggal <= $2
+          WHERE om.is_active = TRUE
+          GROUP BY o.id, o.nama_outlet
+          ORDER BY total_qty DESC
+        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        
+        // Get outlets WITHOUT transactions in this period (but in outlet_master)
+        const outletNonTransaksiData = await pool.query(`
+          SELECT o.id, o.nama_outlet
+          FROM outlet_master om
+          JOIN outlet o ON o.id = om.outlet_id
+          WHERE om.is_active = TRUE
+          AND NOT EXISTS (
+            SELECT 1 FROM penjualan pj 
+            WHERE UPPER(pj.nama_outlet) = UPPER(o.nama_outlet) 
+            AND pj.tanggal >= $2 AND pj.tanggal <= $3
+          )
+          ORDER BY o.nama_outlet
+        `, [allMasterOutlets.rows[0]?.id || 0, startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        
+        outletStats = {
+          rows: [{
+            total_outlet: allMasterOutlets.rows.length,
+            outlet_transaksi: outletTransaksiData.rows.length,
+            outlet_non_transaksi: outletNonTransaksiData.rows.length,
+            outlet_detail: outletTransaksiData.rows,
+            outlet_non_transaksi_detail: outletNonTransaksiData.rows
+          }]
+        };
+        
+      } else {
+        // === SEBELUM JULI 2025 LOGIC: Gunakan data penjualan langsung (existing logic) ===
+        
+        // Get outlet WITH transactions (ada di penjualan)
+        const outletTransaksiData = await pool.query(`
+          SELECT o.id, o.nama_outlet,
+            COALESCE(SUM(pj.qty), 0) AS total_qty,
+            COUNT(pj.id) AS jumlah_transaksi
+          FROM outlet o
+          INNER JOIN penjualan pj ON UPPER(pj.nama_outlet) = UPPER(o.nama_outlet)
+            AND pj.tanggal >= $1 AND pj.tanggal <= $2
+          GROUP BY o.id, o.nama_outlet
+          ORDER BY total_qty DESC
+        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        
+        // Get outlet WITHOUT transactions (ada di outlet tapi tidak ada di penjualan periode ini)
+        const outletNonTransaksiData = await pool.query(`
+          SELECT o.id, o.nama_outlet
+          FROM outlet o
+          WHERE NOT EXISTS (
+            SELECT 1 FROM penjualan pj 
+            WHERE UPPER(pj.nama_outlet) = UPPER(o.nama_outlet) 
+            AND pj.tanggal >= $1 AND pj.tanggal <= $2
+          )
+          ORDER BY o.nama_outlet
+        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        
+        const totalOutlet = await pool.query(`SELECT COUNT(*) AS total FROM outlet`);
+        
+        outletStats = {
+          rows: [{
+            total_outlet: Number(totalOutlet.rows[0]?.total || 0),
+            outlet_transaksi: outletTransaksiData.rows.length,
+            outlet_non_transaksi: outletNonTransaksiData.rows.length,
+            outlet_detail: outletTransaksiData.rows,
+            outlet_non_transaksi_detail: outletNonTransaksiData.rows
+          }]
+        };
+      }
     } catch (err) {
       console.error('Outlet stats query error:', err.message);
       outletStats = { rows: [{ total_outlet: 0, outlet_transaksi: 0, outlet_non_transaksi: 0, outlet_detail: [], outlet_non_transaksi_detail: [] }] };
@@ -102,18 +168,43 @@ export default async function handler(req, res) {
       WHERE tanggal >= $1 AND tanggal <= $2
     `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
 
-    // 6. Outlet Aktif (outlet yang transaksi di periode ini)
-    const outletAktif = await pool.query(`
-      SELECT COUNT(DISTINCT nama_outlet) AS total
-      FROM penjualan
-      WHERE tanggal >= $1 AND tanggal <= $2
-    `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+    // 6. Outlet Aktif - berbeda berdasarkan periode
+    let outletAktif;
+    if (useOutletMaster) {
+      // Juli 2025+: hitung dari outlet_master yang transaksi
+      outletAktif = await pool.query(`
+        SELECT COUNT(DISTINCT o.id) AS total
+        FROM outlet_master om
+        JOIN outlet o ON o.id = om.outlet_id
+        INNER JOIN penjualan pj ON UPPER(pj.nama_outlet) = UPPER(o.nama_outlet)
+          AND pj.tanggal >= $1 AND pj.tanggal <= $2
+        WHERE om.is_active = TRUE
+      `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+    } else {
+      // Sebelum Juli 2025: hitung dari penjualan
+      outletAktif = await pool.query(`
+        SELECT COUNT(DISTINCT nama_outlet) AS total
+        FROM penjualan
+        WHERE tanggal >= $1 AND tanggal <= $2
+      `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+    }
 
     // 7. Total Produk
     const totalProduk = await pool.query(`SELECT COUNT(*) AS total FROM produk`);
 
-    // 8. Total Outlet/Gerai
-    const totalOutlet = await pool.query(`SELECT COUNT(*) AS total FROM outlet`);
+    // 8. Total Outlet/Gerai - berbeda berdasarkan periode
+    let totalOutlet;
+    if (useOutletMaster) {
+      // Juli 2025+: hitung dari outlet_master
+      totalOutlet = await pool.query(`
+        SELECT COUNT(*) AS total 
+        FROM outlet_master om 
+        WHERE om.is_active = TRUE
+      `);
+    } else {
+      // Sebelum Juli 2025: hitung dari semua outlet
+      totalOutlet = await pool.query(`SELECT COUNT(*) AS total FROM outlet`);
+    }
 
     // 9. Stok Kritis - simplified query
     let stokKritis = { rows: [{ kritis_count: 0 }] };
