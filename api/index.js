@@ -43,6 +43,7 @@ import settingsApiHandler from "../backend/settings-api.js";
 import apiStokHandler from "../backend/api-stok.js";
 import v1ProdukHandler from "../backend/v1-produk.js";
 import v1StokGudangHandler from "../backend/v1-stok-gudang.js";
+import outletMasterHandler from "../backend/outlet-master.js";
 import { isDatabaseConfigured, checkDatabaseHealth } from "../services/db.js";
 
 // Health check handler
@@ -117,6 +118,13 @@ const routes = {
   "GET /outlet-status": outletStatusHandler,
   "GET /outlet-list": outletListHandler,
   "GET /outlet-transaksi": outletTransaksiHandler,
+  
+  // Outlet Master routes (for Juli 2025+ manual outlet control)
+  "GET /v1/outlet-master": outletMasterHandler,
+  "POST /v1/outlet-master": outletMasterHandler,
+  "PUT /v1/outlet-master": outletMasterHandler,
+  "DELETE /v1/outlet-master": outletMasterHandler,
+  
   "GET /template-outlet": templateOutletHandler,
   "GET /template-penjualan": templatePenjualanHandler,
   "GET /template-pembelian": templatePembelianHandler,
