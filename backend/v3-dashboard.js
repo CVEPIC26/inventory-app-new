@@ -68,14 +68,26 @@ export default async function handler(req, res) {
           ORDER BY o.nama_outlet
         `);
         
-        // Get outlets WITH transactions in this period
+        // Debug: Check if there are transactions for outlets in outlet_master
+        const debugTransaksi = await pool.query(`
+          SELECT COUNT(DISTINCT pj.nama_outlet) as outlet_dengan_transaksi
+          FROM penjualan pj
+          INNER JOIN outlet_master om ON UPPER(pj.nama_outlet) = UPPER(
+            (SELECT o2.nama_outlet FROM outlet o2 WHERE o2.id = om.outlet_id)
+          )
+          WHERE pj.tanggal >= $1 AND pj.tanggal <= $2
+        `, [startOfMonth.toISOString().split('T')[0], endOfMonth.toISOString().split('T')[0]]);
+        
+        console.log('DEBUG: Outlet dengan transaksi:', debugTransaksi.rows[0]);
+        
+        // Get outlets WITH transactions in this period (direct join via nama_outlet)
         const outletTransaksiData = await pool.query(`
           SELECT o.id, o.nama_outlet,
             COALESCE(SUM(pj.qty), 0) AS total_qty,
             COUNT(pj.id) AS jumlah_transaksi
           FROM outlet_master om
           JOIN outlet o ON o.id = om.outlet_id
-          INNER JOIN penjualan pj ON UPPER(pj.nama_outlet) = UPPER(o.nama_outlet)
+          INNER JOIN penjualan pj ON UPPER(TRIM(pj.nama_outlet)) = UPPER(TRIM(o.nama_outlet))
             AND pj.tanggal >= $1 AND pj.tanggal <= $2
           WHERE om.is_active = TRUE
           GROUP BY o.id, o.nama_outlet
