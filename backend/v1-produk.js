@@ -48,6 +48,11 @@ export default async function handler(req, res) {
   }
 }
 
+// Debug: Simple test endpoint
+async function testHandler(req, res) {
+  return res.status(200).json({ message: 'Test OK' });
+}
+
 async function getAllProduk(req, res) {
   const { search, kategori, page = 1, limit = 50 } = req.query || {};
   const offset = (parseInt(page) - 1) * parseInt(limit);
