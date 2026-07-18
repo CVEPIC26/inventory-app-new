@@ -711,7 +711,7 @@
     } catch (error) {
       console.error('Error loading pembelian:', error);
       renderPembelianTable([]);
-      showToast('Gagal memuat data pembelian', false);
+      showToastLocal('Gagal memuat data pembelian', false);
     }
   }
 
@@ -909,7 +909,7 @@
     link.click();
     URL.revokeObjectURL(url);
     
-    showToast('Template berhasil didownload');
+    showToastLocal('Template berhasil didownload');
   }
 
   // Close import modal
@@ -923,7 +923,7 @@
     const file = fileInput.files[0];
     
     if (!file) {
-      showToast('Pilih file terlebih dahulu', false);
+      showToastLocal('Pilih file terlebih dahulu', false);
       return;
     }
 
@@ -955,7 +955,7 @@
       const result = await response.json();
 
       if (result.success) {
-        showToast(result.message || 'Import berhasil');
+        showToastLocal(result.message || 'Import berhasil');
         closeImportModal();
         loadPembelian();
       } else {
@@ -982,7 +982,7 @@
       }
     } catch (error) {
       console.error('Error processing import:', error);
-      showToast('Gagal memproses file: ' + error.message, false);
+      showToastLocal('Gagal memproses file: ' + error.message, false);
     }
 
     btn.disabled = false;
@@ -1017,12 +1017,12 @@
     const harga = parseFloat(document.getElementById('inputProduk').dataset.harga_beli) || 0;
     
     if (!produkSelect.value) {
-      showToast('Pilih produk terlebih dahulu', false);
+      showToastLocal('Pilih produk terlebih dahulu', false);
       return;
     }
     
     if (qty <= 0) {
-      showToast('Qty harus lebih dari 0', false);
+      showToastLocal('Qty harus lebih dari 0', false);
       return;
     }
     
@@ -1047,7 +1047,7 @@
 
     renderPreviewTable();
     updateSummary();
-    showToast(`"${namaProduk}" ditambahkan ke daftar`);
+    showToastLocal(`"${namaProduk}" ditambahkan ke daftar`);
   }
 
   // Remove item from list
@@ -1056,7 +1056,7 @@
     window.PembelianPage.transactionItems.splice(index, 1);
     renderPreviewTable();
     updateSummary();
-    showToast(`"${item.nama_produk}" dihapus dari daftar`);
+    showToastLocal(`"${item.nama_produk}" dihapus dari daftar`);
   }
 
   // Render preview table
@@ -1118,17 +1118,17 @@
     const supplierId = document.getElementById('inputSupplier').value;
 
     if (!tanggal) {
-      showToast('Tanggal wajib diisi', false);
+      showToastLocal('Tanggal wajib diisi', false);
       return;
     }
 
     if (!supplierId) {
-      showToast('Supplier wajib dipilih', false);
+      showToastLocal('Supplier wajib dipilih', false);
       return;
     }
 
     if (window.PembelianPage.transactionItems.length === 0) {
-      showToast('Tambahkan minimal 1 item', false);
+      showToastLocal('Tambahkan minimal 1 item', false);
       return;
     }
 
@@ -1205,17 +1205,17 @@
       progressBar.remove();
 
       if (errorCount === 0) {
-        showToast(`Berhasil menyimpan ${successCount} transaksi`);
+        showToastLocal(`Berhasil menyimpan ${successCount} transaksi`);
         closeModal();
         loadPembelian();
       } else {
-        showToast(`${successCount} berhasil, ${errorCount} gagal`, false);
+        showToastLocal(`${successCount} berhasil, ${errorCount} gagal`, false);
         loadPembelian();
       }
     } catch (error) {
       console.error('Error saving all:', error);
       progressBar.remove();
-      showToast('Gagal menyimpan data', false);
+      showToastLocal('Gagal menyimpan data', false);
     }
 
     btn.disabled = false;
@@ -1285,7 +1285,7 @@
       openModal('viewModal');
     } catch (error) {
       console.error('Error viewing pembelian:', error);
-      showToast('Gagal memuat detail pembelian', false);
+      showToastLocal('Gagal memuat detail pembelian', false);
     }
   }
 
@@ -1325,7 +1325,7 @@
       openModal('pembelianModal');
     } catch (error) {
       console.error('Error editing pembelian:', error);
-      showToast('Gagal memuat data pembelian', false);
+      showToastLocal('Gagal memuat data pembelian', false);
     }
   }
 
@@ -1375,12 +1375,12 @@
         throw new Error(result.message || 'Delete failed');
       }
       
-      showToast('Pembelian berhasil dihapus');
+      showToastLocal('Pembelian berhasil dihapus');
       closeDeleteModal();
       loadPembelian();
     } catch (error) {
       console.error('Error deleting pembelian:', error);
-      showToast(error.message || 'Gagal menghapus pembelian', false);
+      showToastLocal(error.message || 'Gagal menghapus pembelian', false);
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i data-lucide="trash-2"></i><span>Hapus</span>';
@@ -1409,16 +1409,19 @@
     link.download = `pembelian_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     
-    showToast('Export Excel berhasil');
+    showToastLocal('Export Excel berhasil');
   }
 
-  // Toast notification - use global function from app.html
-  function showToast(message, isSuccess = true) {
-    if (typeof window.showToast === 'function') {
-      window.showToast(message, isSuccess ? 'success' : 'error');
+  // Toast notification helper - calls global showToast from app.html
+  function showToastLocal(message, isSuccess = true) {
+    const type = isSuccess ? 'success' : 'error';
+    // Call global showToast from app.html via the container's parent window
+    const globalShowToast = window.top?.showToast || window.parent?.showToast || window.opener?.showToast;
+    if (typeof globalShowToast === 'function') {
+      globalShowToast(message, type);
     } else {
-      // Fallback: simple alert
-      alert(message);
+      // Fallback to browser alert if no global toast available
+      console.log(`[${type}] ${message}`);
     }
   }
 
