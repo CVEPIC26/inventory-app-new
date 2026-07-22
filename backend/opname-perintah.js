@@ -159,21 +159,18 @@ export default async function handler(req, res) {
       let produkBermasalah = [];
       try {
         const problematicResult = await pool.query(`
-          SELECT DISTINCT 
+          SELECT
             d.sku,
             p.nama_produk,
             d.stok_sistem,
             d.stok_fisik,
             d.selisih,
-            sop.kode_so,
-            sop.bulan,
-            sop.tahun
+            sop.kode_so
           FROM stok_opname_detail d
           JOIN stok_opname so ON so.id = d.opname_id
-          JOIN stok_opname_perintah sop ON sop.opname_id = so.id
-          WHERE sop.bulan = $1 
-            AND sop.tahun = $2
-            AND sop.status = 'selesai'
+          LEFT JOIN stok_opname_perintah sop ON sop.opname_id = so.id AND sop.status = 'selesai'
+          WHERE EXTRACT(MONTH FROM so.tanggal) = $1
+            AND EXTRACT(YEAR FROM so.tanggal) = $2
             AND d.selisih != 0
           ORDER BY ABS(d.selisih) DESC, d.sku ASC
           LIMIT 20
