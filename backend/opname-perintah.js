@@ -154,7 +154,44 @@ export default async function handler(req, res) {
       }));
 
       console.log("[SO LIST]", { bulan, tahun, count: items.length });
-      return res.status(200).json({ success: true, items });
+
+      // Get problematic products (selisih != 0) from completed SO in this period
+      let produkBermasalah = [];
+      try {
+        const problematicResult = await pool.query(`
+          SELECT DISTINCT 
+            d.sku,
+            p.nama_produk,
+            d.stok_sistem,
+            d.stok_fisik,
+            d.selisih,
+            sop.kode_so,
+            sop.bulan,
+            sop.tahun
+          FROM stok_opname_detail d
+          JOIN stok_opname so ON so.id = d.opname_id
+          JOIN stok_opname_perintah sop ON sop.opname_id = so.id
+          WHERE sop.bulan = $1 
+            AND sop.tahun = $2
+            AND sop.status = 'selesai'
+            AND d.selisih != 0
+          ORDER BY ABS(d.selisih) DESC, d.sku ASC
+          LIMIT 20
+        `, [Number(bulan), Number(tahun)]);
+        
+        produkBermasalah = problematicResult.rows.map(row => ({
+          sku: row.sku,
+          nama_produk: row.nama_produk,
+          stok_sistem: Number(row.stok_sistem || 0),
+          stok_fisik: Number(row.stok_fisik || 0),
+          selisih: Number(row.selisih || 0),
+          kode_so: row.kode_so
+        }));
+      } catch (err) {
+        console.error('Error fetching produk bermasalah:', err.message);
+      }
+
+      return res.status(200).json({ success: true, items, produk_bermasalah: produkBermasalah });
     }
 
     if (req.method === "POST") {
