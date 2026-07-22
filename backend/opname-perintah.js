@@ -170,7 +170,7 @@ export default async function handler(req, res) {
             sop.tahun
           FROM stok_opname_detail d
           JOIN stok_opname so ON so.id = d.opname_id
-          JOIN stok_opname_perintah sop ON sop.id = so.perintah_id
+          JOIN stok_opname_perintah sop ON sop.opname_id = so.id
           WHERE sop.bulan = $1 
             AND sop.tahun = $2
             AND sop.status = 'selesai'
