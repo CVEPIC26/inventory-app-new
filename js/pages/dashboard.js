@@ -13,11 +13,15 @@ if (typeof window.Dashboard !== 'undefined') {
   isLoading: true,
   error: null,
   
+  // In-memory cache untuk data yang jarang berubah (master outlet/SKU)
+  _cache: new Map(),
+  _cacheTTL: 5 * 60 * 1000, // 5 menit
+  
   selectedMonth: new Date().getMonth() + 1,
   selectedYear: new Date().getFullYear(),
   
   init() {
-    this.showLoadingOverlay();
+    this.showSkeleton();
     this.loadDashboard();
     this.startAutoRefresh();
     this.updateDateTime();
@@ -91,16 +95,152 @@ if (typeof window.Dashboard !== 'undefined') {
     if (errorEl) errorEl.remove();
   },
   
+  // ============ Caching Helpers ============
+  _getCacheKey(type, bulan, tahun) {
+    return `dashboard_${type}_${bulan}_${tahun}`;
+  },
+  
+  _getFromCache(type, bulan, tahun) {
+    try {
+      // Cek in-memory cache dulu
+      const memKey = this._cacheKey(type, bulan, tahun);
+      const memEntry = this._cache.get(memKey);
+      if (memEntry && Date.now() - memEntry.timestamp < this._cacheTTL) {
+        return memEntry.data;
+      }
+      
+      // Cek sessionStorage
+      const ssKey = this._getCacheKey(type, bulan, tahun);
+      const ssRaw = sessionStorage.getItem(ssKey);
+      if (ssRaw) {
+        const ssEntry = JSON.parse(ssRaw);
+        if (Date.now() - ssEntry.timestamp < this._cacheTTL) {
+          // Restore ke in-memory
+          this._cache.set(memKey, ssEntry);
+          return ssEntry.data;
+        }
+      }
+    } catch (e) {
+      // Abaikan error cache, lanjut fetch
+    }
+    return null;
+  },
+  
+  _saveToCache(type, bulan, tahun, data) {
+    try {
+      const entry = { data, timestamp: Date.now() };
+      const memKey = this._cacheKey(type, bulan, tahun);
+      this._cache.set(memKey, entry);
+      
+      const ssKey = this._getCacheKey(type, bulan, tahun);
+      sessionStorage.setItem(ssKey, JSON.stringify(entry));
+    } catch (e) {
+      // Abaikan error cache
+    }
+  },
+  
+  _cacheKey(type, bulan, tahun) {
+    return `mem_${type}_${bulan}_${tahun}`;
+  },
+  
+  // ============ Optimistic UI (Skeleton) ============
+  showSkeleton() {
+    // Tampilkan skeleton pada KPI cards dan chart containers agar UI segera responsif
+    const skeletonHtml = `
+      <div class="dashboard-skeleton" id="dashboardSkeleton">
+        <div class="skeleton-row">
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+          <div class="skeleton-item kpi-skeleton"></div>
+        </div>
+        <div class="skeleton-row chart-skeleton-row">
+          <div class="skeleton-item chart-skeleton"></div>
+          <div class="skeleton-item chart-skeleton"></div>
+          <div class="skeleton-item chart-skeleton"></div>
+          <div class="skeleton-item chart-skeleton"></div>
+        </div>
+        <div class="skeleton-row table-skeleton-row">
+          <div class="skeleton-item table-skeleton"></div>
+          <div class="skeleton-item table-skeleton"></div>
+          <div class="skeleton-item table-skeleton"></div>
+        </div>
+      </div>
+    `;
+    const dashboard = document.querySelector('.dashboard');
+    if (dashboard) {
+      dashboard.insertAdjacentHTML('afterbegin', skeletonHtml);
+    }
+  },
+  
+  hideSkeleton() {
+    const skeleton = document.getElementById('dashboardSkeleton');
+    if (skeleton) skeleton.remove();
+  },
+  
+  // Fetch dengan cache untuk data master yang jarang berubah
+  async fetchWithCache(url, type, bulan, tahun) {
+    const cached = this._getFromCache(type, bulan, tahun);
+    if (cached) return cached;
+    
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Gagal memuat ${type}`);
+    const data = await response.json();
+    this._saveToCache(type, bulan, tahun, data);
+    return data;
+  },
+  
   async loadDashboard() {
     this.hideError();
+    this.hideSkeleton();
     
     try {
-      // Run sequentially to preserve charts data
-      await this.loadDashboardData();
-      await this.loadChartData();
+      const { selectedMonth, selectedYear } = this;
+      const params = `bulan=${selectedMonth}&tahun=${selectedYear}`;
+      
+      // PARALELISASI: Jalankan fetch dashboard data dan chart data secara bersamaan
+      const [dashboardRes, trenRes, topProdukRes, outletRes, modulLevelRes] = await Promise.all([
+        fetch(`/api/v3-dashboard?${params}`),
+        fetch(`/api/v3-chart?type=tren_penjualan&${params}`),
+        fetch(`/api/v3-chart?type=top_produk&${params}`),
+        fetch(`/api/v3-chart?type=outlet&${params}`),
+        fetch(`/api/v3-chart?type=modul_level&${params}`)
+      ]);
+      
+      if (!dashboardRes.ok) throw new Error('Gagal memuat data dashboard');
+      
+      const dashboardData = await dashboardRes.json();
+      
+      // Chart responses (dengan fallback aman jika gagal)
+      const trenData = trenRes.ok ? await trenRes.json() : { data: [] };
+      const topProdukData = topProdukRes.ok ? await topProdukRes.json() : { data: [] };
+      const outletData = outletRes.ok ? await outletRes.json() : { data: [] };
+      const modulLevelData = modulLevelRes.ok ? await modulLevelRes.json() : { data: [] };
+      
+      // Gabungkan data: dashboard data utama + charts
+      this.data = {
+        charts: {
+          trenPenjualan: trenData,
+          topProduk: topProdukData,
+          outlet: outletData,
+          modulLevel: modulLevelData
+        },
+        ...dashboardData
+      };
       
       this.isLoading = false;
-      this.hideLoadingOverlay();
       this.renderKPIs();
       this.renderCharts();
       this.renderSOProgress();
@@ -112,57 +252,8 @@ if (typeof window.Dashboard !== 'undefined') {
       
     } catch (error) {
       console.error('Error loading dashboard:', error);
+      this.hideSkeleton();
       this.showError(error.message || 'Terjadi kesalahan saat memuat data');
-    }
-  },
-  
-  async loadDashboardData() {
-    try {
-      const { selectedMonth, selectedYear } = this;
-      const response = await fetch(`/api/v3-dashboard?bulan=${selectedMonth}&tahun=${selectedYear}`);
-      if (!response.ok) throw new Error('Gagal memuat data dashboard');
-      
-      const dashboardData = await response.json();
-      // Preserve existing charts data, merge with new dashboard data
-      this.data = {
-        charts: this.data?.charts || {},
-        ...dashboardData
-      };
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      this.data = this.getEmptyData();
-      throw error;
-    }
-  },
-  
-  async loadChartData() {
-    try {
-      const { selectedMonth, selectedYear } = this;
-      const params = `bulan=${selectedMonth}&tahun=${selectedYear}`;
-      
-      const [trenResponse, topProdukResponse, outletResponse, modulLevelResponse] = await Promise.all([
-        fetch('/api/v3-chart?type=tren_penjualan&' + params),
-        fetch('/api/v3-chart?type=top_produk&' + params),
-        fetch('/api/v3-chart?type=outlet&' + params),
-        fetch('/api/v3-chart?type=modul_level&' + params)
-      ]);
-      
-      const trenData = trenResponse.ok ? await trenResponse.json() : { data: [] };
-      const topProdukData = topProdukResponse.ok ? await topProdukResponse.json() : { data: [] };
-      const outletData = outletResponse.ok ? await outletResponse.json() : { data: [] };
-      const modulLevelData = modulLevelResponse.ok ? await modulLevelResponse.json() : { data: [] };
-      
-      // API returns { type, periode, data: [...] }, store directly
-      this.data.charts = {
-        trenPenjualan: trenData,
-        topProduk: topProdukData,
-        outlet: outletData,
-        modulLevel: modulLevelData
-      };
-      
-    } catch (error) {
-      console.error('Error loading chart data:', error);
-      this.data.charts = { trenPenjualan: { data: [] }, topProduk: { data: [] }, outlet: { data: [] }, modulLevel: { data: [] } };
     }
   },
   
