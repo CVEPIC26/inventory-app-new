@@ -14,6 +14,54 @@ const KATEGORI_STATUS_LABEL = {
   belum: 'Belum Ada'
 };
 
+/**
+ * Wrapper fetch JSON dengan error handling, timeout, dan validasi response.
+ * - Melempar Error jika jaringan gagal / timeout / response tidak OK.
+ * - Melempar Error jika body bukan JSON atau berupa null / undefined.
+ * Mengembalikan data JSON yang sudah divalidasi (bukan null/undefined).
+ */
+async function fetchJson(input, init = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(input, {
+      ...init,
+      headers: Object.assign({
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }, init.headers || {}),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      let message = `Gagal menghubungi server (${response.status})`;
+      try {
+        const errBody = await response.json();
+        message = errBody.error || errBody.message || message;
+      } catch (_) {
+        // Body bukan JSON, gunakan default message
+      }
+      throw new Error(message);
+    }
+
+    const data = await response.json();
+
+    if (data === null || data === undefined) {
+      throw new Error('Respon API kosong (null/undefined)');
+    }
+
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Waktu permintaan habis (timeout). Coba lagi.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 state.editingPerintahId = null;
 state.periodKategoriIndicator = [];
 

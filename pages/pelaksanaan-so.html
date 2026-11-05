@@ -585,11 +585,14 @@
         
         // Try to get from current commands list
         const response = await fetch(`/api/opname-perintah?id=${window.SOPelaksanaan.activePerintahId}`);
-        if (response.ok) {
-          const data = await response.json();
-          window.SOPelaksanaan.activeOpnameId = data.opname_id;
-          console.log('[loadProdukList] Updated activeOpnameId from API:', window.SOPelaksanaan.activeOpnameId);
+        if (!response.ok) {
+          console.error('[loadProdukList] Gagal refetch perintah:', response.status);
+          showToast('Gagal memuat detail perintah SO', false);
+          return;
         }
+        const data = await response.json();
+        window.SOPelaksanaan.activeOpnameId = data.opname_id;
+        console.log('[loadProdukList] Updated activeOpnameId from API:', window.SOPelaksanaan.activeOpnameId);
         
         if (!window.SOPelaksanaan.activeOpnameId) {
           console.log('[loadProdukList] Still no opname_id, skipping produk load');
@@ -870,16 +873,19 @@
           })
         });
         
-        if (response.ok) {
-          const data = await response.json();
-          window.SOPelaksanaan.activeOpnameId = data.opname_id;
-          window.SOPelaksanaan.activeStatus = 'proses';
-          updateStatusBadge('proses');
-          showToast('SO dimulai, siap untuk scan');
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || err.message || 'Gagal memulai SO (' + response.status + ')');
         }
+        
+        const data = await response.json();
+        window.SOPelaksanaan.activeOpnameId = data.opname_id;
+        window.SOPelaksanaan.activeStatus = 'proses';
+        updateStatusBadge('proses');
+        showToast('SO dimulai, siap untuk scan');
       } catch (error) {
         console.error('Error starting SO:', error);
-        showToast('Gagal memulai SO', false);
+        showToast(error.message || 'Gagal memulai SO', false);
       }
     }
   }
@@ -1025,10 +1031,10 @@
         produk.detail_id = data.detail?.id;
         produk.input_at = new Date().toISOString();
         console.log('[saveManualInput] Updated produk in map:', produk);
+        
+        // Show result hanya jika produk ditemukan
+        showLastScanResult(produk, stokFisik);
       }
-      
-      // Show result
-      showLastScanResult(produk, stokFisik);
       
       // Add to history with product details
       window.SOPelaksanaan.scanHistory.unshift({
@@ -1059,20 +1065,27 @@
   }
 
   function showLastScanResult(produk, stokFisik) {
+    if (!produk) return; // hindari crash jika produk undefined
+    
     const resultDiv = document.getElementById('lastScanResult');
-    const selisih = stokFisik - produk.stok_sistem;
+    if (!resultDiv) return;
+    
+    const stokSistem = Number(produk.stok_sistem) || 0;
+    const selisih = stokFisik - stokSistem;
     const selisihClass = selisih > 0 ? 'text-success' : selisih < 0 ? 'text-danger' : '';
     const selisihPrefix = selisih > 0 ? '+' : '';
     
-    document.getElementById('lastScanSku').textContent = produk.sku;
+    document.getElementById('lastScanSku').textContent = produk.sku || '-';
     document.getElementById('lastScanTime').textContent = new Date().toLocaleTimeString('id-ID');
     document.getElementById('lastScanProduk').textContent = produk.nama_produk || '-';
-    document.getElementById('lastScanSistem').textContent = produk.stok_sistem;
+    document.getElementById('lastScanSistem').textContent = stokSistem;
     document.getElementById('lastScanFisik').textContent = stokFisik;
     
     const selisihEl = document.getElementById('lastScanSelisih');
-    selisihEl.textContent = `${selisihPrefix}${selisih}`;
-    selisihEl.className = `scan-result__value ${selisihClass}`;
+    if (selisihEl) {
+      selisihEl.textContent = `${selisihPrefix}${selisih}`;
+      selisihEl.className = `scan-result__value ${selisihClass}`;
+    }
     
     resultDiv.style.display = 'block';
   }

@@ -344,18 +344,21 @@
     async function loadOutletData() {
       try {
         const response = await fetch('/api/v1/outlet-master?include_inactive=true');
+        if (!response.ok) throw new Error('Gagal memuat data outlet (' + response.status + ')');
+        
         const result = await response.json();
         
-        if (result.success) {
-          outletData = result.data;
-          renderOutlets();
-          updateStats();
-        } else {
-          showToast('Gagal memuat data: ' + result.message, 'error');
+        // Validasi shape response
+        if (!result || !result.success) {
+          throw new Error(result && result.message ? result.message : 'Respon API tidak valid');
         }
+        
+        outletData = result.data || { outlets: [], available_outlets: [] };
+        renderOutlets();
+        updateStats();
       } catch (error) {
         console.error('Error:', error);
-        showToast('Gagal memuat data outlet', 'error');
+        showToast(error.message || 'Gagal memuat data outlet', 'error');
       }
     }
 

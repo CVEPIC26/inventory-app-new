@@ -61,9 +61,13 @@
 
 <script>
   async function loadStokGudang() {
+    const tbody = document.getElementById('stokTableBody');
     try {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted"><i data-lucide="loader-2" class="spin"></i> Memuat data...</td></tr>';
+      
       const response = await fetch('/api/v1/stok/gudang');
-      if (!response.ok) throw new Error('Failed to load');
+      if (!response.ok) throw new Error('Gagal memuat data stok (' + response.status + ')');
+      
       const data = await response.json();
       
       document.getElementById('totalSku').textContent = data.total_sku || 0;
@@ -73,6 +77,8 @@
       renderStokTable(data.items || []);
     } catch (error) {
       console.error('Error loading stok:', error);
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Gagal memuat data: ' + escapeHtml(error.message) + '</td></tr>';
+      if (typeof showToast === 'function') showToast(error.message || 'Gagal memuat data stok gudang', false);
     }
   }
 
