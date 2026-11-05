@@ -31,10 +31,23 @@ export default async function handler(req, res) {
           continue;
         }
 
+        const qtyAngka = parseInt(qty, 10);
+        if (!Number.isFinite(qtyAngka)) {
+          failed++;
+          continue;
+        }
+
+        // Validasi SKU ada di master produk sebelum insert
+        const cekSku = await pool.query("SELECT 1 FROM produk WHERE sku = $1", [sku]);
+        if (cekSku.rows.length === 0) {
+          failed++;
+          continue;
+        }
+
         await pool.query(`
           INSERT INTO stok_awal (sku, qty_awal)
           VALUES ($1,$2)
-        `, [sku, parseInt(qty, 10)]);
+        `, [sku, qtyAngka]);
 
         success++;
       } catch {
