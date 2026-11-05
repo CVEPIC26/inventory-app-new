@@ -8,22 +8,23 @@ export default async function handler(req, res) {
 
     const { tanggal, nama_outlet, sku, qty } = req.body;
 
-    // VALIDASI
-    if (!tanggal || !nama_outlet || !sku || !qty) {
-      return res.status(400).json({ error: "Data tidak lengkap" });
+    // Normalisasi & validasi input
+    const tanggalBersih = String(tanggal || "").trim();
+    const namaOutletBersih = String(nama_outlet || "").trim().toUpperCase();
+    const skuBersih = String(sku || "").trim();
+    const qtyAngka = parseInt(qty, 10);
+
+    if (!tanggalBersih || !namaOutletBersih || !skuBersih || !Number.isFinite(qtyAngka)) {
+      return res.status(400).json({ error: "Data tidak lengkap atau qty tidak valid" });
     }
 
     // Cek apakah SKU ada
-    const cek = await pool.query(
-      "SELECT * FROM produk WHERE sku = $1",
-      [sku]
-    );
+    const cek = await pool.query("SELECT * FROM produk WHERE sku = $1", [skuBersih]);
 
     if (cek.rows.length === 0) {
       return res.status(400).json({ error: "SKU tidak ditemukan" });
     }
 
-    const outletName = nama_outlet.toUpperCase().trim();
     const client = await pool.connect();
 
     try {
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
         INSERT INTO penjualan (tanggal, nama_outlet, sku, qty)
         VALUES ($1, $2, $3, $4)
         RETURNING id, tanggal, nama_outlet, sku, qty
-      `, [tanggal, outletName, sku, qty]);
+      `, [tanggalBersih, namaOutletBersih, skuBersih, qtyAngka]);
 
       const availability = await client.query(`
         SELECT

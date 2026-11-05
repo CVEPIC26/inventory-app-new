@@ -4,14 +4,25 @@ export default async function handler(req, res) {
   try {
     const { tanggal, sku, qty } = req.body;
 
-    if (!tanggal || !sku || !qty) {
-      return res.status(400).json({ error: "Data tidak lengkap" });
+    // Normalisasi & validasi input
+    const tanggalBersih = String(tanggal || "").trim();
+    const skuBersih = String(sku || "").trim();
+    const qtyAngka = parseInt(qty, 10);
+
+    if (!tanggalBersih || !skuBersih || !Number.isFinite(qtyAngka)) {
+      return res.status(400).json({ error: "Data tidak lengkap atau qty tidak valid" });
+    }
+
+    // Cek apakah SKU ada di master produk
+    const cekSku = await pool.query("SELECT 1 FROM produk WHERE sku = $1", [skuBersih]);
+    if (cekSku.rows.length === 0) {
+      return res.status(400).json({ error: "SKU tidak ditemukan di master produk" });
     }
 
     await pool.query(`
       INSERT INTO pembelian (tanggal, sku, qty)
       VALUES ($1,$2,$3)
-    `, [tanggal, sku, qty]);
+    `, [tanggalBersih, skuBersih, qtyAngka]);
 
     res.status(200).json({ message: "Pembelian berhasil" });
 
