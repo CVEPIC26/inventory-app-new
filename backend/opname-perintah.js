@@ -153,8 +153,6 @@ export default async function handler(req, res) {
         };
       }));
 
-      console.log("[SO LIST]", { bulan, tahun, count: items.length });
-
       // Get problematic products (selisih != 0) from completed SO in this period
       let produkBermasalah = [];
       try {

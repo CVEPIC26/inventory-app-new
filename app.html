@@ -322,7 +322,6 @@
       if (window.AppRouter) {
         AppRouter.init();
       }
-      console.log('✅ App initialized');
     }
     
     // ============================================
@@ -594,7 +593,7 @@
     
     document.getElementById('globalSearch')?.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
-        console.log('Search:', e.target.value.trim());
+        // search handled elsewhere
       }
     });
 

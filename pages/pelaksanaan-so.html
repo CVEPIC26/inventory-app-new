@@ -576,13 +576,7 @@
       // Get opname_id from state
       const opnameId = window.SOPelaksanaan.activeOpnameId;
       
-      console.log('[loadProdukList] Start - opnameId:', opnameId, 'kategoriId:', kategoriId);
-      
       if (!opnameId) {
-        console.log('[loadProdukList] No opname_id, checking localStorage...');
-        console.log('[loadProdukList] localStorage activeOpnameId:', localStorage.getItem('activeOpnameId'));
-        console.log('[loadProdukList] Trying to get from current task...');
-        
         // Try to get from current commands list
         const response = await fetch(`/api/opname-perintah?id=${window.SOPelaksanaan.activePerintahId}`);
         if (!response.ok) {
@@ -592,24 +586,19 @@
         }
         const data = await response.json();
         window.SOPelaksanaan.activeOpnameId = data.opname_id;
-        console.log('[loadProdukList] Updated activeOpnameId from API:', window.SOPelaksanaan.activeOpnameId);
         
         if (!window.SOPelaksanaan.activeOpnameId) {
-          console.log('[loadProdukList] Still no opname_id, skipping produk load');
           return;
         }
       }
       
       // Re-fetch opnameId after potential update
       const finalOpnameId = window.SOPelaksanaan.activeOpnameId;
-      console.log('[loadProdukList] Final opnameId:', finalOpnameId);
       
       // Load dari v3-opname-detail endpoint with correct parameters
       const url = `/api/v3-opname-detail?opname_id=${finalOpnameId}&kategori_id=${kategoriId}`;
-      console.log('[loadProdukList] Fetching:', url);
       
       const response = await fetch(url);
-      console.log('[loadProdukList] Response status:', response.status, 'ok:', response.ok);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -618,7 +607,6 @@
       }
       
       const data = await response.json();
-      console.log('[loadProdukList] Response data:', JSON.stringify(data).substring(0, 200));
       
       window.SOPelaksanaan.produkList = data.items || data.produk || [];
       window.SOPelaksanaan.targetSku = window.SOPelaksanaan.produkList.length;
@@ -628,8 +616,6 @@
       window.SOPelaksanaan.produkList.forEach(p => {
         window.SOPelaksanaan.produkMap[String(p.sku)] = p;
       });
-      
-      console.log('[loadProdukList] Produk loaded:', Object.keys(window.SOPelaksanaan.produkMap).length, 'items for kategori:', kategoriId);
       
       // Update progress table
       renderProgressTable();
@@ -660,8 +646,6 @@
     const remaining = snapshotTarget - checked;
     const progress = snapshotTarget > 0 ? Math.round((checked / snapshotTarget) * 100) : 0;
     
-    console.log('[updateSoStats] Stats:', { snapshotTarget, checked, remaining, progress });
-    
     // Display target SKU (snapshot) with current count as reference
     document.getElementById('soTargetSku').textContent = snapshotTarget;
     document.getElementById('soCheckedSku').textContent = checked;
@@ -674,8 +658,6 @@
     const terminalStates = ['selesai', 'ditolak'];
     const isTerminal = terminalStates.includes(window.SOPelaksanaan.activeStatus);
     btnSubmit.disabled = isTerminal || checked === 0;
-    
-    console.log('[updateSoStats] Submit button:', { isTerminal, checked, disabled: btnSubmit.disabled });
     
     if (window.SOPelaksanaan.activeStatus === 'selesai') {
       btnSubmit.innerHTML = '<i data-lucide="check-circle"></i><span>SO Selesai</span>';
@@ -714,8 +696,6 @@
         return;
       }
       
-      console.log('[BarcodeScan] Found cameras:', devices);
-      
       // Find back camera
       let selectedCamera = devices[0];
       for (const device of devices) {
@@ -726,14 +706,12 @@
         }
       }
       
-      console.log('[BarcodeScan] Using camera:', selectedCamera.label || selectedCamera.id);
-      
       // Stop any existing scanner first
       if (window.SOPelaksanaan.html5QrCode) {
         try {
           await window.SOPelaksanaan.html5QrCode.stop();
         } catch (e) {
-          console.log('[BarcodeScan] Previous scanner stop error (ignored):', e.message);
+          // Previous scanner stop error ignored
         }
         window.SOPelaksanaan.html5QrCode = null;
       }
@@ -750,18 +728,12 @@
         qrbox: { width: 250, height: 150 }
       };
       
-      console.log('[BarcodeScan] Starting with camera ID:', selectedCamera.id);
-      
       await window.SOPelaksanaan.html5QrCode.start(
         selectedCamera.id,
         config,
         onBarcodeScanned,
         (errorMessage) => {
-          // Scan error - this is normal when no barcode visible
-          // Only log occasionally to avoid console spam
-          if (Math.random() < 0.01) {
-            console.log('[BarcodeScan] Scanning... no barcode');
-          }
+          // Scan error - normal when no barcode visible; ignore to avoid console spam
         }
       );
       
@@ -785,7 +757,6 @@
       }, 200);
       
       if (window.lucide) lucide.createIcons();
-      console.log('[BarcodeScan] Camera started successfully');
       
     } catch (err) {
       console.error('[BarcodeScan] Error:', err);
@@ -812,7 +783,6 @@
     
     try {
       await window.SOPelaksanaan.html5QrCode.stop();
-      console.log('[BarcodeScan] Stopped successfully');
     } catch (err) {
       console.error('[BarcodeScan] Stop error:', err);
     } finally {
@@ -842,8 +812,6 @@
   }
 
   function onBarcodeScanned(decodedText) {
-    console.log('[BarcodeScan] Scanned:', decodedText);
-    
     // Stop scanning after successful scan
     stopBarcodeScan();
     
@@ -894,47 +862,32 @@
     const input = document.getElementById('scanInput');
     const skuInput = input.value.trim();
     
-    console.log('[processScanInput] Start - SKU input:', skuInput);
-    
     if (!skuInput) {
-      console.log('[processScanInput] Empty input, returning');
       return;
     }
     
     // Auto-start SO jika belum dimulai
     if (window.SOPelaksanaan.activeStatus === 'menunggu') {
-      console.log('[processScanInput] Status is menunggu, starting SO...');
       await startSoIfNeeded();
     }
     
     if (!window.SOPelaksanaan.activeOpnameId) {
-      console.log('[processScanInput] No activeOpnameId!');
       showToast('ID opname tidak ditemukan', false);
       return;
     }
     
     // Ensure sku is string for consistent lookup
     const sku = String(skuInput);
-    console.log('[processScanInput] Looking for SKU:', sku);
-    
-    // Log produkMap status
-    const mapKeys = Object.keys(window.SOPelaksanaan.produkMap || {});
-    console.log('[processScanInput] produkMap has', mapKeys.length, 'items');
-    console.log('[processScanInput] produkMap keys sample:', mapKeys.slice(0, 5));
     
     // Cek apakah SKU ada di list
     const produk = window.SOPelaksanaan.produkMap[sku];
-    console.log('[processScanInput] produk from map:', produk ? 'FOUND' : 'NOT FOUND');
     
     if (!produk) {
-      console.log('[processScanInput] SKU not found in map:', sku);
       showToast(`SKU ${sku} tidak ditemukan`, false);
       input.value = '';
       input.focus();
       return;
     }
-    
-    console.log('[processScanInput] Showing modal for SKU:', sku, 'produk:', produk.nama_produk);
     
     // Get stok sistem from produk
     const stokSistem = produk.stok_sistem || 0;
@@ -991,10 +944,7 @@
     const stokFisik = parseInt(document.getElementById('manualQty').value) || 0;
     const sku = String(skuInput); // Ensure string key for lookup
     
-    console.log('[saveManualInput] Saving:', { sku, stokFisik });
-    
     if (!sku || !window.SOPelaksanaan.activeOpnameId) {
-      console.log('[saveManualInput] Invalid data');
       showToast('Data tidak valid', false);
       return;
     }
@@ -1002,7 +952,6 @@
     try {
       showLoader();
       
-      console.log('[saveManualInput] POST to /api/v3-opname-detail');
       const response = await fetch('/api/v3-opname-detail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1016,12 +965,10 @@
       
       if (!response.ok) {
         const err = await response.json();
-        console.log('[saveManualInput] API error:', err);
         throw new Error(err.error || 'Failed to save');
       }
       
       const data = await response.json();
-      console.log('[saveManualInput] Response:', data);
       
       // Update produk in memory - use string key
       const produk = window.SOPelaksanaan.produkMap[sku];
@@ -1030,7 +977,6 @@
         produk.selisih = stokFisik - produk.stok_sistem;
         produk.detail_id = data.detail?.id;
         produk.input_at = new Date().toISOString();
-        console.log('[saveManualInput] Updated produk in map:', produk);
         
         // Show result hanya jika produk ditemukan
         showLastScanResult(produk, stokFisik);
@@ -1045,11 +991,9 @@
         selisih: stokFisik - (produk?.stok_sistem || 0),
         waktu: new Date().toLocaleTimeString('id-ID')
       });
-      console.log('[saveManualInput] scanHistory length:', window.SOPelaksanaan.scanHistory.length);
       renderScanHistory();
       
       // Update stats and table
-      console.log('[saveManualInput] Calling updateSoStats and renderProgressTable');
       updateSoStats();
       renderProgressTable();
       

@@ -25,8 +25,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "CSV kosong / tidak terbaca" });
     }
 
-    console.log("CSV MASUK:\n", csv);
-
     // CLEAN & SPLIT
     const lines = csv
       .replace(/^\uFEFF/, "") // hapus BOM
@@ -48,7 +46,6 @@ export default async function handler(req, res) {
         const cols = row.split(/[,;]/);
 
         if (cols.length < 4) {
-          console.log("SKIP kolom kurang:", row);
           failed++;
           continue;
         }
@@ -56,7 +53,6 @@ export default async function handler(req, res) {
         let [tanggal, nama_outlet, sku, qty] = cols.map(c => c.trim());
 
         if (!tanggal || !nama_outlet || !sku || !qty) {
-          console.log("SKIP data kosong:", row);
           failed++;
           continue;
         }
@@ -71,7 +67,6 @@ export default async function handler(req, res) {
         );
 
         if (cek.rows.length === 0) {
-          console.log("SKU tidak ditemukan:", sku);
           failed++;
           continue;
         }
@@ -143,7 +138,6 @@ export default async function handler(req, res) {
         success++;
 
       } catch (errRow) {
-        console.log("ERROR ROW:", row, errRow.message);
         failed++;
       }
     }

@@ -7,10 +7,11 @@ import crypto from "crypto";
 import pool from "../services/db.js";
 import { VALID_ROLES, authenticate, authorize, getCurrentUser } from "../services/auth.js";
 
-// Security: Warn if JWT_SECRET is not set
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-in-production-please-set-jwt-secret";
-if (!process.env.JWT_SECRET) {
-  console.warn("[SECURITY WARNING] JWT_SECRET not set! Using fallback. Set JWT_SECRET env var in production.");
+// JWT Secret - WAJIB diatur via environment variable (JWT_SECRET).
+// Jangan pernah menyimpan secret yang di-hardcode ke repository.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable harus diatur untuk keamanan produksi. Set JWT_SECRET env var sebelum menjalankan server.");
 }
 
 function send(res, status, payload) {
@@ -384,14 +385,10 @@ async function updateUser(req, res, userId) {
     updates.push(`updated_at = NOW()`);
     params.push(userId);
 
-    console.log('[UPDATE USER] Payload:', { id: userId, role, email, nama, status, updates: updates });
-
     const result = await pool.query(
       `UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
       params
     );
-
-    console.log('[UPDATE USER] Result:', { id: userId, role, rowCount: result.rowCount });
 
     if (result.rowCount === 0) {
       return send(res, 404, { success: false, message: "User tidak ditemukan" });
@@ -531,9 +528,6 @@ async function resetPassword(req, res, userId) {
     if (result.rowCount === 0) {
       return send(res, 404, { success: false, message: "User tidak ditemukan" });
     }
-
-    // Security: Don't expose temp password in API response, log it server-side only
-    console.log(`[PASSWORD RESET] User ${userId} password reset by admin ${auth.user.username} at ${new Date().toISOString()}`);
 
     return send(res, 200, { success: true, message: "Password berhasil direset. Password sementara telah diberikan." });
   } catch (error) {

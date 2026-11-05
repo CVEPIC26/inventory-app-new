@@ -5,7 +5,6 @@
 
 // Prevent redeclaration - check if already exists
 if (typeof window.Dashboard !== 'undefined') {
-  console.log('Dashboard already initialized');
 } else {
   window.Dashboard = {
   data: {},
@@ -105,14 +104,6 @@ if (typeof window.Dashboard !== 'undefined') {
       await this.loadDashboardData();
       await this.loadChartData();
       
-      console.log('=== DATA LOADED ===');
-      console.log('Dashboard Data:', this.data);
-      console.log('Charts Data:', this.data.charts);
-      console.log('this.data.charts.topProduk:', this.data.charts?.topProduk);
-      console.log('this.data.charts.outlet:', this.data.charts?.outlet);
-      console.log('this.data.charts.modulLevel:', this.data.charts?.modulLevel);
-      console.log('this.data.charts.trenPenjualan:', this.data.charts?.trenPenjualan);
-      
       this.isLoading = false;
       this.hideLoadingOverlay();
       this.renderKPIs();
@@ -142,9 +133,6 @@ if (typeof window.Dashboard !== 'undefined') {
         charts: this.data?.charts || {},
         ...dashboardData
       };
-      console.log('Dashboard data loaded:', this.data);
-      console.log('Charts after dashboard load:', this.data.charts);
-      
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       this.data = this.getEmptyData();
@@ -169,12 +157,6 @@ if (typeof window.Dashboard !== 'undefined') {
       const outletData = outletResponse.ok ? await outletResponse.json() : { data: [] };
       const modulLevelData = modulLevelResponse.ok ? await modulLevelResponse.json() : { data: [] };
       
-      console.log('🔍 API Response Debug:');
-      console.log('1. trenData:', JSON.stringify(trenData, null, 2));
-      console.log('2. topProdukData:', JSON.stringify(topProdukData, null, 2));
-      console.log('3. outletData:', JSON.stringify(outletData, null, 2));
-      console.log('4. modulLevelData:', JSON.stringify(modulLevelData, null, 2));
-      
       // API returns { type, periode, data: [...] }, store directly
       this.data.charts = {
         trenPenjualan: trenData,
@@ -182,12 +164,6 @@ if (typeof window.Dashboard !== 'undefined') {
         outlet: outletData,
         modulLevel: modulLevelData
       };
-      
-      console.log('Chart data stored:', this.data.charts);
-      console.log('this.data.charts.trenPenjualan.data:', this.data.charts.trenPenjualan?.data);
-      console.log('this.data.charts.topProduk.data:', this.data.charts.topProduk?.data);
-      console.log('this.data.charts.outlet.data:', this.data.charts.outlet?.data);
-      console.log('this.data.charts.modulLevel.data:', this.data.charts.modulLevel?.data);
       
     } catch (error) {
       console.error('Error loading chart data:', error);
@@ -254,9 +230,6 @@ if (typeof window.Dashboard !== 'undefined') {
   },
   
   renderCharts() {
-    console.log('=== RENDER CHARTS ===');
-    console.log('Tren Penjualan Data:', this.data.charts?.trenPenjualan);
-    console.log('Top Produk Data:', this.data.charts?.topProduk);
     this.renderTrenPenjualanChart();
     this.renderTopProdukChart();
     this.renderTopOutletChart();
@@ -274,7 +247,6 @@ if (typeof window.Dashboard !== 'undefined') {
     }
     
     const trenData = this.data.charts?.trenPenjualan?.data || [];
-    console.log('Tren Penjualan Data Array:', trenData);
     
     // Nama bulan Indonesia
     const bulanIndonesia = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -365,7 +337,6 @@ if (typeof window.Dashboard !== 'undefined') {
     if (!container) return;
     
     const topProdukData = this.data.charts?.topProduk?.data || [];
-    console.log('Top Produk Data Array:', topProdukData);
     
     const filteredData = topProdukData.filter(d => d.value > 0).slice(0, 10);
     
@@ -394,7 +365,6 @@ if (typeof window.Dashboard !== 'undefined') {
     if (!container) return;
     
     const outletData = this.data.charts?.outlet?.data || [];
-    console.log('Outlet Data Array:', outletData);
     
     const filteredData = outletData.filter(d => d.value > 0).slice(0, 10);
     
@@ -484,8 +454,6 @@ if (typeof window.Dashboard !== 'undefined') {
     
     const modulLevelResponse = this.data.charts?.modulLevel;
     const modulData = modulLevelResponse?.data || [];
-    console.log('Modul Level Response:', modulLevelResponse);
-    console.log('Modul Level Data:', modulData);
     
     // Define all expected levels
     const expectedLevels = [
@@ -539,7 +507,6 @@ if (typeof window.Dashboard !== 'undefined') {
     if (!container) return;
     
     const stokList = this.data.stok?.kritis_list || [];
-    console.log('Stok Kritis List:', stokList);
     
     if (!stokList.length) {
       container.innerHTML = '<div class="table-card__empty"><i data-lucide="check-circle"></i><p class="table-card__empty-text">Tidak ada stok kritis</p></div>';

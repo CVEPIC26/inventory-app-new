@@ -6,8 +6,12 @@
 import crypto from "crypto";
 import pool from "../services/db.js";
 
-// JWT Secret - should be set via environment variable
-const JWT_SECRET = process.env.JWT_SECRET || "cvepic-warehouse-v3-secret-key-change-in-production";
+// JWT Secret - WAJIB diatur via environment variable (JWT_SECRET).
+// Jangan pernah menyimpan secret yang di-hardcode ke repository.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable harus diatur untuk keamanan produksi. Set JWT_SECRET sebelum menjalankan server.");
+}
 const TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Valid roles in the system

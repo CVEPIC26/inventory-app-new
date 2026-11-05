@@ -43,8 +43,6 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { opname_id, kategori_id } = req.query;
       
-      console.log("[SO DETAIL]", { opnameId: opname_id, kategoriId: kategori_id });
-      
       if (!opname_id) {
         return res.status(400).json({ success: false, error: "opname_id wajib" });
       }

@@ -3,6 +3,9 @@ node_modules
 .env
 .env.local
 .env*.local
+dist/
+build/
+*.log
 server*.out
 server*.err
 .DS_Store
