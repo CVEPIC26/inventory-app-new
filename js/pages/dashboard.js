@@ -59,15 +59,10 @@ if (typeof window.Dashboard !== 'undefined') {
     if (timeEl) timeEl.textContent = now.toLocaleTimeString('id-ID', timeOptions);
   },
   
-  showLoadingOverlay() {
-    const overlay = document.getElementById('dashboardLoadingOverlay');
-    if (overlay) overlay.style.display = 'flex';
-  },
+  // Loading overlay dinonaktifkan - tidak menampilkan overlay saat memuat data
+  showLoadingOverlay() {},
   
-  hideLoadingOverlay() {
-    const overlay = document.getElementById('dashboardLoadingOverlay');
-    if (overlay) overlay.style.display = 'none';
-  },
+  hideLoadingOverlay() {},
   
   showError(message) {
     this.error = message;
