@@ -1198,6 +1198,11 @@
           })
         });
         
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.message || 'Gagal update item (' + response.status + ')');
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -1227,14 +1232,20 @@
             })
           });
           
-          const result = await response.json();
-          
-          if (result.success) {
-            successCount++;
-          } else {
-            errorCount++;
-            console.error('Error saving item:', item.sku, result.message);
+          let result;
+          try {
+            result = await response.json();
+          } catch (_) {
+            result = { success: false, message: 'Respon tidak valid (' + response.status + ')' };
           }
+          
+          if (!response.ok || !result.success) {
+            errorCount++;
+            console.error('Error saving item:', item.sku, result && result.message);
+            continue;
+          }
+          
+          successCount++;
         }
       }
       
